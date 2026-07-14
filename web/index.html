@@ -265,6 +265,14 @@
       overflow: hidden;
     }
 
+    .thread.hide-sql .sql-strip {
+      display: none !important;
+    }
+
+    .thread.hide-answers .answer-bubble:not(.error) {
+      display: none !important;
+    }
+
     .sql-strip.fresh {
       border-left-color: var(--accent);
       box-shadow: 0 0 0 1px var(--accent-glow), 0 0 18px -4px var(--accent-glow);
@@ -754,6 +762,32 @@
         <input type="text" id="esIndexFilterInput" placeholder="logs-*,users" />
       </div>
 
+      <!-- SQL Query Visibility Option -->
+      <label style="margin-top: 8px; display: block;">SQL Query Visibility</label>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; user-select: none;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+          <input type="radio" name="sqlVisibility" id="sqlVisibilityShow" checked style="cursor: pointer; margin: 0;" />
+          Show SQL Queries
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+          <input type="radio" name="sqlVisibility" id="sqlVisibilityHide" style="cursor: pointer; margin: 0;" />
+          Hide SQL Queries
+        </label>
+      </div>
+
+      <!-- Synthesized Answer Visibility Option -->
+      <label style="margin-top: 8px; display: block;">Text Answer Visibility</label>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; user-select: none;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+          <input type="radio" name="answerVisibility" id="answerVisibilityShow" checked style="cursor: pointer; margin: 0;" />
+          Show Text Answers
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+          <input type="radio" name="answerVisibility" id="answerVisibilityHide" style="cursor: pointer; margin: 0;" />
+          Hide Text Answers
+        </label>
+      </div>
+
       <button class="settings-save" id="settingsSave">Save &amp; reconnect</button>
       <hr class="settings-divider">
       <label>Schema</label>
@@ -814,6 +848,11 @@
       const dbTypeSelect = document.getElementById('dbTypeSelect');
       const sqlConfigSection = document.getElementById('sqlConfigSection');
       const esConfigSection = document.getElementById('esConfigSection');
+      
+      const sqlVisibilityShow = document.getElementById('sqlVisibilityShow');
+      const sqlVisibilityHide = document.getElementById('sqlVisibilityHide');
+      const answerVisibilityShow = document.getElementById('answerVisibilityShow');
+      const answerVisibilityHide = document.getElementById('answerVisibilityHide');
 
       const dbUrlLabel = document.getElementById('dbUrlLabel');
       const dbUrlInput = document.getElementById('dbUrlInput');
@@ -850,9 +889,47 @@
         }
       });
 
+      // Toggle SQL query visibility locally
+      sqlVisibilityShow.addEventListener('change', () => {
+        localStorage.setItem('dbrag_show_sql', 'true');
+        thread.classList.remove('hide-sql');
+      });
+      sqlVisibilityHide.addEventListener('change', () => {
+        localStorage.setItem('dbrag_show_sql', 'false');
+        thread.classList.add('hide-sql');
+      });
+
+      // Toggle Text Answer visibility locally
+      answerVisibilityShow.addEventListener('change', () => {
+        localStorage.setItem('dbrag_show_answer', 'true');
+        thread.classList.remove('hide-answers');
+      });
+      answerVisibilityHide.addEventListener('change', () => {
+        localStorage.setItem('dbrag_show_answer', 'false');
+        thread.classList.add('hide-answers');
+      });
+
       // Load saved connection configurations
       apiUrlInput.value = apiBase;
       groqApiKeyInput.value = localStorage.getItem('dbrag_groq_key') || '';
+
+      const savedShowSql = localStorage.getItem('dbrag_show_sql') !== 'false';
+      if (savedShowSql) {
+        sqlVisibilityShow.checked = true;
+        thread.classList.remove('hide-sql');
+      } else {
+        sqlVisibilityHide.checked = true;
+        thread.classList.add('hide-sql');
+      }
+
+      const savedShowAnswer = localStorage.getItem('dbrag_show_answer') !== 'false';
+      if (savedShowAnswer) {
+        answerVisibilityShow.checked = true;
+        thread.classList.remove('hide-answers');
+      } else {
+        answerVisibilityHide.checked = true;
+        thread.classList.add('hide-answers');
+      }
 
       const savedDbType = localStorage.getItem('dbrag_db_type') || 'postgres';
       dbTypeSelect.value = savedDbType;
