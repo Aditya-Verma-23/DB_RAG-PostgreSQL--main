@@ -12,6 +12,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import DB_URL, GROQ_API_KEY, MODEL, ALLOWED_ORIGINS, DB_TYPE
@@ -241,7 +242,11 @@ def health():
 
 
 # Serve the chat frontend at the root URL (http://localhost:8000/)
-_FRONTEND_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web", "index.html"))
+_WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
+_FRONTEND_PATH = os.path.join(_WEB_DIR, "index.html")
+
+if os.path.exists(_WEB_DIR):
+    app.mount("/static", StaticFiles(directory=_WEB_DIR), name="static")
 
 
 @app.get("/", response_class=FileResponse)
