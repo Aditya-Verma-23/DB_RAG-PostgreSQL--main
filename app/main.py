@@ -155,6 +155,16 @@ def get_dynamic_engine(config: ConnectionConfig | None) -> Any:
                 db_url = f"sqlite:///{path}"
             else:
                 host = config.host or "localhost"
+                port_val = config.port
+                if ":" in host:
+                    host, host_port = host.split(":", 1)
+                    if host_port.isdigit():
+                        port_val = int(host_port)
+                elif "," in host:
+                    host, host_port = host.split(",", 1)
+                    if host_port.isdigit():
+                        port_val = int(host_port)
+
                 database = config.database or ""
                 username = config.username or ""
                 password = config.password or ""
@@ -164,16 +174,16 @@ def get_dynamic_engine(config: ConnectionConfig | None) -> Any:
                 auth = f"{user_part}{pass_part}@" if user_part else ""
                 
                 if config.db_type == "postgres":
-                    port = config.port or 5432
+                    port = port_val or 5432
                     db_url = f"postgresql+psycopg2://{auth}{host}:{port}/{database}"
                 elif config.db_type == "mysql":
-                    port = config.port or 3306
+                    port = port_val or 3306
                     db_url = f"mysql+pymysql://{auth}{host}:{port}/{database}"
                 elif config.db_type == "mariadb":
-                    port = config.port or 3306
+                    port = port_val or 3306
                     db_url = f"mysql+pymysql://{auth}{host}:{port}/{database}"
                 elif config.db_type == "mssql":
-                    port = config.port or 1433
+                    port = port_val or 1433
                     if config.odbc_driver:
                         driver_quoted = quote_plus(config.odbc_driver)
                         params = f"?driver={driver_quoted}"

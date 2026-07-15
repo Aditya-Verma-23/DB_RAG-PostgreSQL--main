@@ -48,23 +48,23 @@
         <div class="modal-tabs">
           <button class="tab-btn active" data-tab="schemaTab">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <path d="M3 9h18M9 21V9"/>
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18M9 21V9" />
             </svg>
             Schema
           </button>
           <button class="tab-btn" data-tab="dbTab">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <ellipse cx="12" cy="5" rx="9" ry="3"/>
-              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-              <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+              <ellipse cx="12" cy="5" rx="9" ry="3" />
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+              <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
             </svg>
             Database
           </button>
           <button class="tab-btn" data-tab="llmTab">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="4" y="4" width="16" height="16" rx="2"/>
-              <path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/>
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
             </svg>
             LLM
           </button>
@@ -89,7 +89,8 @@
 
             <label style="margin-top: 16px;">Introspected Tables</label>
             <div class="schema-preview-area" id="schemaPreviewArea">
-              <div style="color: var(--text-faint); font-style: italic;">No schema loaded yet. Connect to a database to introspect tables.</div>
+              <div style="color: var(--text-faint); font-style: italic;">No schema loaded yet. Connect to a database to
+                introspect tables.</div>
             </div>
           </div>
 
@@ -116,10 +117,10 @@
               <select id="dbTypeSelect">
                 <option value="postgres">PostgreSQL</option>
                 <option value="mysql">MySQL</option>
-                <option value="mariadb">MariaDB</option>
+                <!-- <option value="mariadb">MariaDB</option> -->
                 <option value="mssql">SQL Server (MSSQL)</option>
-                <option value="sqlite">SQLite</option>
-                <option value="elasticsearch">Elasticsearch</option>
+                <!-- <option value="sqlite">SQLite</option>
+                <option value="elasticsearch">Elasticsearch</option> -->
               </select>
             </div>
 
@@ -175,11 +176,14 @@
                 <div id="mssqlExtraFields" style="display: none;" class="form-section">
                   <div class="form-group">
                     <label for="dbOdbcDriverInput">ODBC DRIVER</label>
-                    <input type="text" id="dbOdbcDriverInput" value="ODBC Driver 18 for SQL Server" placeholder="ODBC Driver 18 for SQL Server" />
+                    <input type="text" id="dbOdbcDriverInput" value="ODBC Driver 18 for SQL Server"
+                      placeholder="ODBC Driver 18 for SQL Server" />
                   </div>
 
                   <div class="form-row" style="align-items: center; justify-content: space-between; margin-top: 8px;">
-                    <span style="font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase;">Trust Server Certificate</span>
+                    <span
+                      style="font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase;">Trust
+                      Server Certificate</span>
                     <label class="switch-toggle">
                       <input type="checkbox" id="dbTrustCertCheckbox" checked />
                       <span class="switch-slider"></span>
@@ -213,8 +217,10 @@
               </div>
             </div>
 
-            <button class="settings-save" id="settingsSave" style="width: auto; align-self: flex-end; margin-top: 16px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;">
+            <button class="settings-save" id="settingsSave"
+              style="width: auto; align-self: flex-end; margin-top: 16px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="margin-right: 6px;">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
               Apply DB Connection
@@ -229,18 +235,21 @@
             </div>
 
             <div class="form-group">
-              <label for="groqApiKeyInput">GROQ API KEY (OPTIONAL OVERRIDE)</label>
+              <label for="groqApiKeyInput">API KEY (OPTIONAL OVERRIDE)</label>
               <input type="password" id="groqApiKeyInput" placeholder="gsk_••••" />
             </div>
 
             <!-- SQL Query Visibility Option -->
             <label style="margin-top: 12px; display: block;">SQL Query Visibility</label>
             <div style="display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; user-select: none;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
-                <input type="radio" name="sqlVisibility" id="sqlVisibilityShow" checked style="cursor: pointer; margin: 0;" />
+              <label
+                style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+                <input type="radio" name="sqlVisibility" id="sqlVisibilityShow" checked
+                  style="cursor: pointer; margin: 0;" />
                 Show SQL Queries
               </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+              <label
+                style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
                 <input type="radio" name="sqlVisibility" id="sqlVisibilityHide" style="cursor: pointer; margin: 0;" />
                 Hide SQL Queries
               </label>
@@ -249,12 +258,16 @@
             <!-- Synthesized Answer Visibility Option -->
             <label style="margin-top: 12px; display: block;">Text Answer Visibility</label>
             <div style="display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; user-select: none;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
-                <input type="radio" name="answerVisibility" id="answerVisibilityShow" checked style="cursor: pointer; margin: 0;" />
+              <label
+                style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+                <input type="radio" name="answerVisibility" id="answerVisibilityShow" checked
+                  style="cursor: pointer; margin: 0;" />
                 Show Text Answers
               </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
-                <input type="radio" name="answerVisibility" id="answerVisibilityHide" style="cursor: pointer; margin: 0;" />
+              <label
+                style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 12px; margin: 0; font-weight: normal; color: var(--text);">
+                <input type="radio" name="answerVisibility" id="answerVisibilityHide"
+                  style="cursor: pointer; margin: 0;" />
                 Hide Text Answers
               </label>
             </div>
