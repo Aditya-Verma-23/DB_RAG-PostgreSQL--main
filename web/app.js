@@ -10,7 +10,18 @@
       const statusText = document.getElementById('statusText');
       const modelTag = document.getElementById('modelTag');
       const settingsBtn = document.getElementById('settingsBtn');
-      const settingsPanel = document.getElementById('settingsPanel');
+      
+      const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+      const modalCloseBtn = document.getElementById('modalCloseBtn');
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      const tabPanes = document.querySelectorAll('.tab-pane');
+      
+      const dbStatusBadge = document.getElementById('dbStatusBadge');
+      const modeUrlBtn = document.getElementById('modeUrlBtn');
+      const modeFieldsBtn = document.getElementById('modeFieldsBtn');
+      const urlFormSection = document.getElementById('urlFormSection');
+      const fieldsFormSection = document.getElementById('fieldsFormSection');
+
       const apiUrlInput = document.getElementById('apiUrlInput');
       const settingsSave = document.getElementById('settingsSave');
       const examplesWrap = document.getElementById('examples');
@@ -18,38 +29,64 @@
       // Connection fields
       const groqApiKeyInput = document.getElementById('groqApiKeyInput');
       const dbTypeSelect = document.getElementById('dbTypeSelect');
-      const sqlConfigSection = document.getElementById('sqlConfigSection');
-      const esConfigSection = document.getElementById('esConfigSection');
       
       const sqlVisibilityShow = document.getElementById('sqlVisibilityShow');
       const sqlVisibilityHide = document.getElementById('sqlVisibilityHide');
       const answerVisibilityShow = document.getElementById('answerVisibilityShow');
       const answerVisibilityHide = document.getElementById('answerVisibilityHide');
 
+      const sqlUrlGroup = document.getElementById('sqlUrlGroup');
+      const esUrlGroup = document.getElementById('esUrlGroup');
       const dbUrlLabel = document.getElementById('dbUrlLabel');
       const dbUrlInput = document.getElementById('dbUrlInput');
 
+      // Elasticsearch Specific inputs
       const esUrlInput = document.getElementById('esUrlInput');
-      const esUserInput = document.getElementById('esUserInput');
-      const esPasswordInput = document.getElementById('esPasswordInput');
-      const esApiKeyInput = document.getElementById('esApiKeyInput');
       const esIndexFilterInput = document.getElementById('esIndexFilterInput');
+
+      // Granular fields
+      const dbHostInput = document.getElementById('dbHostInput');
+      const dbPortInput = document.getElementById('dbPortInput');
+      const dbNameInput = document.getElementById('dbNameInput');
+      const dbUserInput = document.getElementById('dbUserInput');
+      const dbPassInput = document.getElementById('dbPassInput');
+      const mssqlExtraFields = document.getElementById('mssqlExtraFields');
+      const dbOdbcDriverInput = document.getElementById('dbOdbcDriverInput');
+      const dbTrustCertCheckbox = document.getElementById('dbTrustCertCheckbox');
+
+      const esFieldsGroup = document.getElementById('esFieldsGroup');
+      const sqlFieldsGroup = document.getElementById('sqlFieldsGroup');
+      const esHostInput = document.getElementById('esHostInput');
+      const esFieldsUserInput = document.getElementById('esUserInput');
+      const esPassInput = document.getElementById('esPassInput');
+      const esApiKeyInput = document.getElementById('esApiKeyInput');
+      const esFieldsFilterInput = document.getElementById('esFieldsFilterInput');
+      const schemaPreviewArea = document.getElementById('schemaPreviewArea');
+
+      let connectionMode = localStorage.getItem('dbrag_conn_mode') || 'url';
 
       // Toggle DB Type Section and update placeholders
       dbTypeSelect.addEventListener('change', () => {
         const val = dbTypeSelect.value;
+        
         if (val === 'elasticsearch') {
-          sqlConfigSection.style.display = 'none';
-          esConfigSection.style.display = 'flex';
+          sqlUrlGroup.style.display = 'none';
+          esUrlGroup.style.display = 'flex';
+          
+          sqlFieldsGroup.style.display = 'none';
+          esFieldsGroup.style.display = 'flex';
         } else {
-          sqlConfigSection.style.display = 'flex';
-          esConfigSection.style.display = 'none';
+          sqlUrlGroup.style.display = 'flex';
+          esUrlGroup.style.display = 'none';
+          
+          sqlFieldsGroup.style.display = 'flex';
+          esFieldsGroup.style.display = 'none';
 
           if (val === 'sqlite') {
             dbUrlLabel.textContent = 'SQLite Database Path / Connection URL';
             dbUrlInput.placeholder = 'sqlite:///local.db';
           } else {
-            dbUrlLabel.textContent = 'Database Connection URL';
+            dbUrlLabel.textContent = 'CONNECTION URL';
             const placeholders = {
               postgres: 'postgresql+psycopg2://user:pass@host:port/db',
               mysql: 'mysql+pymysql://user:pass@host:port/db',
@@ -58,6 +95,57 @@
             };
             dbUrlInput.placeholder = placeholders[val] || '';
           }
+        }
+
+        if (val === 'mssql') {
+          mssqlExtraFields.style.display = 'flex';
+        } else {
+          mssqlExtraFields.style.display = 'none';
+        }
+      });
+
+      // Connection Mode switching
+      function setConnectionMode(mode) {
+        connectionMode = mode;
+        localStorage.setItem('dbrag_conn_mode', mode);
+        if (mode === 'url') {
+          modeUrlBtn.classList.add('active');
+          modeFieldsBtn.classList.remove('active');
+          urlFormSection.style.display = 'block';
+          fieldsFormSection.style.display = 'none';
+        } else {
+          modeUrlBtn.classList.remove('active');
+          modeFieldsBtn.classList.add('active');
+          urlFormSection.style.display = 'none';
+          fieldsFormSection.style.display = 'block';
+        }
+      }
+
+      modeUrlBtn.addEventListener('click', () => setConnectionMode('url'));
+      modeFieldsBtn.addEventListener('click', () => setConnectionMode('fields'));
+
+      // Tab switching logic
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabBtns.forEach(b => b.classList.remove('active'));
+          tabPanes.forEach(p => p.classList.remove('active'));
+          
+          btn.classList.add('active');
+          const targetPane = document.getElementById(btn.dataset.tab);
+          if (targetPane) targetPane.classList.add('active');
+        });
+      });
+
+      // Modal display controls
+      settingsBtn.addEventListener('click', () => {
+        settingsModalBackdrop.classList.add('open');
+      });
+      modalCloseBtn.addEventListener('click', () => {
+        settingsModalBackdrop.classList.remove('open');
+      });
+      settingsModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === settingsModalBackdrop) {
+          settingsModalBackdrop.classList.remove('open');
         }
       });
 
@@ -105,15 +193,30 @@
 
       const savedDbType = localStorage.getItem('dbrag_db_type') || 'postgres';
       dbTypeSelect.value = savedDbType;
-      dbTypeSelect.dispatchEvent(new Event('change'));
 
+      // Load URL fields
       dbUrlInput.value = localStorage.getItem('dbrag_db_url') || '';
-
       esUrlInput.value = localStorage.getItem('dbrag_es_url') || '';
-      esUserInput.value = localStorage.getItem('dbrag_es_user') || '';
-      esPasswordInput.value = localStorage.getItem('dbrag_es_password') || '';
-      esApiKeyInput.value = localStorage.getItem('dbrag_es_api_key') || '';
       esIndexFilterInput.value = localStorage.getItem('dbrag_es_index_filter') || '';
+
+      // Load Detailed fields
+      dbHostInput.value = localStorage.getItem('dbrag_db_host') || '';
+      dbPortInput.value = localStorage.getItem('dbrag_db_port') || '';
+      dbNameInput.value = localStorage.getItem('dbrag_db_name') || '';
+      dbUserInput.value = localStorage.getItem('dbrag_db_user') || '';
+      dbPassInput.value = localStorage.getItem('dbrag_db_pass') || '';
+      dbOdbcDriverInput.value = localStorage.getItem('dbrag_db_odbc') || 'ODBC Driver 18 for SQL Server';
+      dbTrustCertCheckbox.checked = localStorage.getItem('dbrag_db_trust') !== 'false';
+
+      esHostInput.value = localStorage.getItem('dbrag_es_host') || '';
+      esFieldsUserInput.value = localStorage.getItem('dbrag_es_fields_user') || '';
+      esPassInput.value = localStorage.getItem('dbrag_es_fields_pass') || '';
+      esApiKeyInput.value = localStorage.getItem('dbrag_es_fields_apikey') || '';
+      esFieldsFilterInput.value = localStorage.getItem('dbrag_es_fields_filter') || '';
+
+      // Trigger change and mode loaders
+      dbTypeSelect.dispatchEvent(new Event('change'));
+      setConnectionMode(connectionMode);
 
       const EXAMPLES = [
         'How many records are in each table?',
@@ -128,15 +231,6 @@
         examplesWrap.appendChild(chip);
       });
 
-      settingsBtn.addEventListener('click', () => {
-        settingsPanel.classList.toggle('open');
-      });
-      document.addEventListener('click', (e) => {
-        if (!settingsPanel.contains(e.target) && e.target !== settingsBtn && !settingsBtn.contains(e.target)) {
-          settingsPanel.classList.remove('open');
-        }
-      });
-
       function getConnectionPayload() {
         const dbType = dbTypeSelect.value;
         const payload = {};
@@ -144,25 +238,57 @@
         const groqKey = groqApiKeyInput.value.trim();
         if (groqKey) payload.groq_api_key = groqKey;
 
-        if (dbType === 'elasticsearch') {
-          payload.db_type = 'elasticsearch';
-          const url = esUrlInput.value.trim();
-          if (url) payload.es_url = url;
-          const user = esUserInput.value.trim();
-          if (user) payload.es_user = user;
-          const pwd = esPasswordInput.value.trim();
-          if (pwd) payload.es_password = pwd;
-          const apiKey = esApiKeyInput.value.trim();
-          if (apiKey) payload.es_api_key = apiKey;
-          const filter = esIndexFilterInput.value.trim();
-          if (filter) payload.es_index_filter = filter;
+        payload.db_type = dbType;
+
+        if (connectionMode === 'url') {
+          if (dbType === 'elasticsearch') {
+            const url = esUrlInput.value.trim();
+            if (url) payload.es_url = url;
+            const filter = esIndexFilterInput.value.trim();
+            if (filter) payload.es_index_filter = filter;
+          } else {
+            const url = dbUrlInput.value.trim();
+            if (url) {
+              payload.db_url = url;
+              if (dbType === 'sqlite') {
+                payload.sqlite_path = url;
+              }
+            }
+          }
         } else {
-          payload.db_type = dbType;
-          const url = dbUrlInput.value.trim();
-          if (url) {
-            payload.db_url = url;
-            if (dbType === 'sqlite') {
-              payload.sqlite_path = url; // fallback compatibility
+          if (dbType === 'elasticsearch') {
+            const url = esHostInput.value.trim();
+            if (url) payload.es_url = url;
+            const user = esFieldsUserInput.value.trim();
+            if (user) payload.es_user = user;
+            const pwd = esPassInput.value.trim();
+            if (pwd) payload.es_password = pwd;
+            const apiKey = esApiKeyInput.value.trim();
+            if (apiKey) payload.es_api_key = apiKey;
+            const filter = esFieldsFilterInput.value.trim();
+            if (filter) payload.es_index_filter = filter;
+          } else if (dbType === 'sqlite') {
+            const url = dbUrlInput.value.trim();
+            if (url) {
+              payload.db_url = url;
+              payload.sqlite_path = url;
+            }
+          } else {
+            const host = dbHostInput.value.trim();
+            if (host) payload.host = host;
+            const port = parseInt(dbPortInput.value.trim(), 10);
+            if (!isNaN(port)) payload.port = port;
+            const database = dbNameInput.value.trim();
+            if (database) payload.database = database;
+            const username = dbUserInput.value.trim();
+            if (username) payload.username = username;
+            const password = dbPassInput.value.trim();
+            if (password) payload.password = password;
+
+            if (dbType === 'mssql') {
+              const odbc = dbOdbcDriverInput.value.trim();
+              if (odbc) payload.odbc_driver = odbc;
+              payload.trust_server_certificate = dbTrustCertCheckbox.checked;
             }
           }
         }
@@ -177,15 +303,26 @@
         }
         localStorage.setItem('dbrag_groq_key', groqApiKeyInput.value.trim());
         localStorage.setItem('dbrag_db_type', dbTypeSelect.value);
+        
         localStorage.setItem('dbrag_db_url', dbUrlInput.value.trim());
-
         localStorage.setItem('dbrag_es_url', esUrlInput.value.trim());
-        localStorage.setItem('dbrag_es_user', esUserInput.value.trim());
-        localStorage.setItem('dbrag_es_password', esPasswordInput.value.trim());
-        localStorage.setItem('dbrag_es_api_key', esApiKeyInput.value.trim());
         localStorage.setItem('dbrag_es_index_filter', esIndexFilterInput.value.trim());
 
-        settingsPanel.classList.remove('open');
+        localStorage.setItem('dbrag_db_host', dbHostInput.value.trim());
+        localStorage.setItem('dbrag_db_port', dbPortInput.value.trim());
+        localStorage.setItem('dbrag_db_name', dbNameInput.value.trim());
+        localStorage.setItem('dbrag_db_user', dbUserInput.value.trim());
+        localStorage.setItem('dbrag_db_pass', dbPassInput.value.trim());
+        localStorage.setItem('dbrag_db_odbc', dbOdbcDriverInput.value.trim());
+        localStorage.setItem('dbrag_db_trust', dbTrustCertCheckbox.checked);
+
+        localStorage.setItem('dbrag_es_host', esHostInput.value.trim());
+        localStorage.setItem('dbrag_es_fields_user', esFieldsUserInput.value.trim());
+        localStorage.setItem('dbrag_es_fields_pass', esPassInput.value.trim());
+        localStorage.setItem('dbrag_es_fields_apikey', esApiKeyInput.value.trim());
+        localStorage.setItem('dbrag_es_fields_filter', esFieldsFilterInput.value.trim());
+
+        settingsModalBackdrop.classList.remove('open');
         checkHealth();
         triggerSchemaRefresh();
       });
@@ -211,29 +348,97 @@
         }
       }
 
+      function updateDbStatusBadge(isOnline) {
+        if (isOnline) {
+          dbStatusBadge.className = 'status-badge connected';
+          dbStatusBadge.innerHTML = '<span class="status-dot-inner"></span>Connected';
+        } else {
+          dbStatusBadge.className = 'status-badge disconnected';
+          dbStatusBadge.innerHTML = '<span class="status-dot-inner"></span>Disconnected';
+        }
+      }
+
+      function renderSchemaPreview(schemaDoc) {
+        if (!schemaDoc || schemaDoc.startsWith('(schema not yet loaded)') || schemaDoc === '(no tables found)') {
+          schemaPreviewArea.innerHTML = `<div style="color: var(--text-faint); font-style: italic;">No schema loaded yet. Connect to a database to introspect tables.</div>`;
+          return;
+        }
+
+        const tables = schemaDoc.split('\n\n');
+        let html = '';
+        tables.forEach(tableBlock => {
+          const lines = tableBlock.trim().split('\n');
+          if (lines.length === 0) return;
+          const tableHeader = lines[0].replace('TABLE ', '').replace(':', '');
+          let columnsStr = '';
+          let fKeysStr = '';
+          lines.slice(1).forEach(line => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('columns:')) {
+              columnsStr = trimmed.replace('columns:', '').trim();
+            } else if (trimmed.startsWith('foreign_keys:')) {
+              fKeysStr = trimmed.replace('foreign_keys:', '').trim();
+            }
+          });
+
+          html += `
+            <div class="schema-preview-table">
+              <div class="schema-preview-table-name">📁 ${escapeHtml(tableHeader)}</div>
+              <div class="schema-preview-cols">
+                <strong>Columns:</strong> ${escapeHtml(columnsStr)}
+                ${fKeysStr ? `<br/><strong>Foreign Keys:</strong> ${escapeHtml(fKeysStr)}` : ''}
+              </div>
+            </div>
+          `;
+        });
+        schemaPreviewArea.innerHTML = html;
+      }
+
+      async function fetchSchemaContent(payload) {
+        try {
+          const res = await fetch(apiBase + '/schema', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connection: payload })
+          });
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.schema) {
+              renderSchemaPreview(data.schema);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load schema preview on health check:", e);
+        }
+      }
+
       async function checkHealth() {
         statusText.textContent = 'checking';
         statusDot.className = 'status-dot';
         try {
+          const payload = getConnectionPayload();
           const res = await fetch(apiBase + '/health', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ connection: getConnectionPayload() })
+            body: JSON.stringify({ connection: payload })
           });
           if (!res.ok) throw new Error('bad status');
           const data = await res.json().catch(() => ({}));
           statusDot.className = 'status-dot online';
           statusText.textContent = 'connected';
+          updateDbStatusBadge(true);
           if (data.model) modelTag.textContent = data.model;
           if (data.schema_refreshed_at) {
             schemaRefreshedAt = data.schema_refreshed_at;
             schemaTtlSeconds = data.schema_ttl_seconds || 60;
             updateSchemaAgeLabel();
           }
+          fetchSchemaContent(payload);
         } catch (e) {
           statusDot.className = 'status-dot error';
           statusText.textContent = 'offline';
           modelTag.textContent = 'unavailable';
+          updateDbStatusBadge(false);
         }
       }
 
@@ -260,10 +465,15 @@
           }
           statusDot.className = 'status-dot online';
           statusText.textContent = 'connected';
+          updateDbStatusBadge(true);
+          if (data.schema) {
+            renderSchemaPreview(data.schema);
+          }
         } catch (e) {
           schemaRefreshInfo.textContent = 'refresh failed — check connection settings';
           statusDot.className = 'status-dot error';
           statusText.textContent = 'offline';
+          updateDbStatusBadge(false);
         } finally {
           schemaRefreshBtn.disabled = false;
           setTimeout(() => schemaRefreshBtn.classList.remove('spinning'), 500);

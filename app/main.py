@@ -59,6 +59,8 @@ class ConnectionConfig(BaseModel):
     es_api_key: str | None = None
     es_index_filter: str | None = None
     groq_api_key: str | None = None
+    odbc_driver: str | None = None
+    trust_server_certificate: bool | None = None
 
 
 class SchemaRequest(BaseModel):
@@ -126,7 +128,15 @@ def get_dynamic_engine(config: ConnectionConfig | None) -> Any:
             elif db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
             elif db_url.startswith("mssql://"):
-                db_url = db_url.replace("mssql://", "mssql+pymssql://", 1)
+                if config.odbc_driver:
+                    db_url = db_url.replace("mssql://", "mssql+pyodbc://", 1)
+                    driver_quoted = quote_plus(config.odbc_driver)
+                    sep = "&" if "?" in db_url else "?"
+                    db_url += f"{sep}driver={driver_quoted}"
+                    if config.trust_server_certificate:
+                        db_url += "&trustServerCertificate=yes"
+                else:
+                    db_url = db_url.replace("mssql://", "mssql+pymssql://", 1)
 
             # Validate dialect prefix to prevent database mismatch errors
             if config.db_type == "postgres" and not db_url.startswith("postgresql"):
@@ -145,6 +155,16 @@ def get_dynamic_engine(config: ConnectionConfig | None) -> Any:
                 db_url = f"sqlite:///{path}"
             else:
                 host = config.host or "localhost"
+                port_val = config.port
+                if ":" in host:
+                    host, host_port = host.split(":", 1)
+                    if host_port.isdigit():
+                        port_val = int(host_port)
+                elif "," in host:
+                    host, host_port = host.split(",", 1)
+                    if host_port.isdigit():
+                        port_val = int(host_port)
+
                 database = config.database or ""
                 username = config.username or ""
                 password = config.password or ""
@@ -154,17 +174,24 @@ def get_dynamic_engine(config: ConnectionConfig | None) -> Any:
                 auth = f"{user_part}{pass_part}@" if user_part else ""
                 
                 if config.db_type == "postgres":
-                    port = config.port or 5432
+                    port = port_val or 5432
                     db_url = f"postgresql+psycopg2://{auth}{host}:{port}/{database}"
                 elif config.db_type == "mysql":
-                    port = config.port or 3306
+                    port = port_val or 3306
                     db_url = f"mysql+pymysql://{auth}{host}:{port}/{database}"
                 elif config.db_type == "mariadb":
-                    port = config.port or 3306
+                    port = port_val or 3306
                     db_url = f"mysql+pymysql://{auth}{host}:{port}/{database}"
                 elif config.db_type == "mssql":
-                    port = config.port or 1433
-                    db_url = f"mssql+pymssql://{auth}{host}:{port}/{database}"
+                    port = port_val or 1433
+                    if config.odbc_driver:
+                        driver_quoted = quote_plus(config.odbc_driver)
+                        params = f"?driver={driver_quoted}"
+                        if config.trust_server_certificate:
+                            params += "&trustServerCertificate=yes"
+                        db_url = f"mssql+pyodbc://{auth}{host}:{port}/{database}{params}"
+                    else:
+                        db_url = f"mssql+pymssql://{auth}{host}:{port}/{database}"
         else:
             db_url = config.db_url or DB_URL
 

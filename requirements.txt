@@ -9,3 +9,5 @@ pydantic>=2.9.0
 elasticsearch>=8.0.0
 pymssql>=2.2.0
 cryptography>=41.0.0
+pyodbc>=5.0.0
+
