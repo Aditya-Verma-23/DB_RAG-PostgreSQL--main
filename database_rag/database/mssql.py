@@ -10,4 +10,3 @@ class MSSQLProvider(SQLAlchemyProvider):
     def from_settings(cls, settings) -> "MSSQLProvider":
         """Build a provider from app Settings (avoids hardcoding connection details)."""
         return cls(settings.mssql_url)
-

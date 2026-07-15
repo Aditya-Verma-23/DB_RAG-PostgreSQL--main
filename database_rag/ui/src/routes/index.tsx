@@ -169,6 +169,98 @@ const parseColumns = (columnsStr: string): Array<{ name: string; type: string }>
   return cols;
 };
 
+// Parse connection URL into individual fields
+const parseConnectionString = (connectionString: string) => {
+  const defaultValues = {
+    dialect: 'postgresql',
+    host: 'localhost',
+    port: '',
+    database: '',
+    username: '',
+    password: '',
+    driver: 'ODBC Driver 18 for SQL Server',
+    trustCert: true
+  };
+
+  if (!connectionString) return defaultValues;
+
+  try {
+    // Handle mssql+pyodbc:// URLs
+    if (connectionString.startsWith('mssql+pyodbc://')) {
+      const url = connectionString.replace('mssql+pyodbc://', 'http://');
+      const parsed = new URL(url);
+      
+      const driverMatch = connectionString.match(/[?&]driver=([^&]+)/i);
+      const trustCertMatch = connectionString.match(/[?&]TrustServerCertificate=([^&]+)/i);
+      
+      return {
+        dialect: 'mssql',
+        host: parsed.hostname || 'localhost',
+        port: parsed.port || '1433',
+        database: parsed.pathname?.substring(1) || '',
+        username: parsed.username || '',
+        password: parsed.password || '',
+        driver: driverMatch ? decodeURIComponent(driverMatch[1]) : defaultValues.driver,
+        trustCert: trustCertMatch ? trustCertMatch[1].toLowerCase() === 'yes' : defaultValues.trustCert
+      };
+    }
+
+    // Handle postgresql://, mysql://, etc.
+    const dialectMatch = connectionString.match(/^([^:]+):\/\//);
+    const dialect = dialectMatch ? dialectMatch[1] : 'postgresql';
+    
+    // Remove dialect prefix and parse
+    const urlToParse = connectionString.replace(/^[^:]+:\/\//, 'http://');
+    const parsed = new URL(urlToParse);
+    
+    return {
+      dialect: dialect === 'postgresql' ? 'postgresql' : dialect === 'mysql' ? 'mysql' : dialect === 'sqlite' ? 'sqlite' : 'postgresql',
+      host: parsed.hostname || 'localhost',
+      port: parsed.port || (dialect === 'postgresql' ? '5432' : dialect === 'mysql' ? '3306' : ''),
+      database: parsed.pathname?.substring(1) || '',
+      username: parsed.username || '',
+      password: parsed.password || '',
+      driver: defaultValues.driver,
+      trustCert: defaultValues.trustCert
+    };
+  } catch (e) {
+    return defaultValues;
+  }
+};
+
+// Build connection URL from individual fields
+const buildConnectionString = (config: {
+  dialect: string;
+  host: string;
+  port: string;
+  database: string;
+  username: string;
+  password: string;
+  driver: string;
+  trustCert: boolean;
+}) => {
+  const { dialect, host, port, database, username, password, driver, trustCert } = config;
+
+  if (dialect === 'sqlite') {
+    return `sqlite:///${database}`;
+  }
+
+  if (dialect === 'mssql') {
+    const encodedPassword = encodeURIComponent(password);
+    let url = `mssql+pyodbc://${username}:${encodedPassword}@${host}:${port}/${database}`;
+    url += `?driver=${encodeURIComponent(driver)}`;
+    if (trustCert) {
+      url += `&TrustServerCertificate=yes`;
+    }
+    return url;
+  }
+
+  // PostgreSQL, MySQL, etc.
+  const encodedPassword = encodeURIComponent(password);
+  const portPart = port ? `:${port}` : '';
+  return `${dialect}://${username}:${encodedPassword}@${host}${portPart}/${database}`;
+};
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = () => {
@@ -185,7 +277,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function ChatApp() {
-  const [activeTab, setActiveTab] = useState<'schema' | 'database' | 'llm'>('schema')
+  const [activeTab, setActiveTab] = useState<'database' | 'llm' | 'schema'>('database')
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null) // null = loading
   const [dbConnected, setDbConnected] = useState<boolean>(false)
   const [loading, setLoading] = useState(false)
@@ -230,6 +322,10 @@ function ChatApp() {
   const [schemaError, setSchemaError] = useState('')
   const [schemaSearch, setSchemaSearch] = useState('')
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({})
+
+  // Track if user is editing URL or fields to prevent sync loops
+  const [isSyncingFromUrl, setIsSyncingFromUrl] = useState(false)
+  const [isSyncingFromFields, setIsSyncingFromFields] = useState(false)
 
   // Chat input
   const [input, setInput] = useState('')
@@ -451,6 +547,48 @@ function ChatApp() {
   useEffect(() => {
     checkHealthAndLoadConfigs()
   }, [])
+
+  // Sync from URL to fields (when URL changes and user is in URL mode or just loaded)
+  useEffect(() => {
+    if (isSyncingFromFields) return; // Don't sync if we're currently syncing from fields
+    
+    if (dbConfigUrl && dbConfigMethod === 'url') {
+      setIsSyncingFromUrl(true);
+      const parsed = parseConnectionString(dbConfigUrl);
+      setDbDialect(parsed.dialect);
+      setDbHost(parsed.host);
+      setDbPort(parsed.port);
+      setDbName(parsed.database);
+      setDbUser(parsed.username);
+      setDbPassword(parsed.password);
+      if (parsed.dialect === 'mssql') {
+        setDbDriver(parsed.driver);
+        setDbTrustCert(parsed.trustCert);
+      }
+      setIsSyncingFromUrl(false);
+    }
+  }, [dbConfigUrl]);
+
+  // Sync from fields to URL (when any field changes and user is in fields mode)
+  useEffect(() => {
+    if (isSyncingFromUrl) return; // Don't sync if we're currently syncing from URL
+    
+    if (dbConfigMethod === 'fields') {
+      setIsSyncingFromFields(true);
+      const url = buildConnectionString({
+        dialect: dbDialect,
+        host: dbHost,
+        port: dbPort,
+        database: dbName,
+        username: dbUser,
+        password: dbPassword,
+        driver: dbDriver,
+        trustCert: dbTrustCert
+      });
+      setDbConfigUrl(url);
+      setIsSyncingFromFields(false);
+    }
+  }, [dbDialect, dbHost, dbPort, dbName, dbUser, dbPassword, dbDriver, dbTrustCert, dbConfigMethod]);
 
   const handleProviderChange = (provider: string) => {
     setLlmProvider(provider)
@@ -779,14 +917,6 @@ function ChatApp() {
             >
               <Settings size={20} />
             </button>
-            <button 
-              className="icon-btn" 
-              title="Clear Chat" 
-              onClick={() => setMessages([{ role: 'bot', content: 'Chat history cleared. How can I help you query the database today?' }])}
-              type="button"
-            >
-              <Trash2 size={20} />
-            </button>
           </div>
         </header>
 
@@ -951,14 +1081,6 @@ function ChatApp() {
             
             <div className="modal-tabs">
               <button 
-                className={`modal-tab ${activeTab === 'schema' ? 'active' : ''}`}
-                onClick={() => setActiveTab('schema')}
-                type="button"
-              >
-                <Table size={16} />
-                Schema
-              </button>
-              <button 
                 className={`modal-tab ${activeTab === 'database' ? 'active' : ''}`}
                 onClick={() => setActiveTab('database')}
                 type="button"
@@ -973,6 +1095,14 @@ function ChatApp() {
               >
                 <Cpu size={16} />
                 LLM
+              </button>
+              <button 
+                className={`modal-tab ${activeTab === 'schema' ? 'active' : ''}`}
+                onClick={() => setActiveTab('schema')}
+                type="button"
+              >
+                <Table size={16} />
+                Schema
               </button>
             </div>
 
@@ -1101,7 +1231,22 @@ function ChatApp() {
                           className="config-textarea" 
                           placeholder="dialect://user:pass@host:port/database"
                           value={dbConfigUrl}
-                          onChange={(e) => setDbConfigUrl(e.target.value)}
+                          onChange={(e) => {
+                            const newUrl = e.target.value;
+                            setDbConfigUrl(newUrl);
+                            // Also update fields in real-time for preview
+                            const parsed = parseConnectionString(newUrl);
+                            setDbDialect(parsed.dialect);
+                            setDbHost(parsed.host);
+                            setDbPort(parsed.port);
+                            setDbName(parsed.database);
+                            setDbUser(parsed.username);
+                            setDbPassword(parsed.password);
+                            if (parsed.dialect === 'mssql') {
+                              setDbDriver(parsed.driver);
+                              setDbTrustCert(parsed.trustCert);
+                            }
+                          }}
                           rows={4}
                         />
                         <span className="help-text">
@@ -1240,6 +1385,54 @@ function ChatApp() {
                     </div>
                   )}
 
+                  {/* Auto-generated connection string preview (fields mode) */}
+                  {dbConfigMethod === 'fields' && dbConfigUrl && (
+                    <div className="config-group" style={{ marginTop: '16px' }}>
+                      <label>Auto-generated Connection URL</label>
+                      <div style={{ 
+                        position: 'relative', 
+                        background: 'var(--bg-secondary)', 
+                        borderRadius: '8px', 
+                        padding: '12px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                        wordBreak: 'break-all',
+                        border: '1px solid var(--border)',
+                        color: 'var(--accent)'
+                      }}>
+                        {dbConfigUrl}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(dbConfigUrl);
+                            setDbStatusMsg({ type: 'success', text: 'Connection URL copied to clipboard!' });
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            background: 'var(--primary)',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            cursor: 'pointer',
+                            color: 'white',
+                            fontSize: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Copy size={12} />
+                          Copy
+                        </button>
+                      </div>
+                      <span className="help-text">
+                        This URL is automatically generated from the fields above and will be used when you click "Apply DB Connection".
+                      </span>
+                    </div>
+                  )}
+
                   <div className="modal-footer">
                     <button type="submit" className="btn btn-primary" disabled={loading}>
                       {loading ? <RefreshCw size={16} className="spin-icon" /> : <Check size={16} />}
@@ -1312,6 +1505,9 @@ function ChatApp() {
                         value={llmTemp}
                         onChange={(e) => setLlmTemp(parseFloat(e.target.value))}
                         className="range-slider"
+                        style={{
+                          background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${llmTemp * 100}%, var(--border) ${llmTemp * 100}%, var(--border) 100%)`
+                        }}
                       />
                       <span className="help-text">Higher = more creative, Lower = more deterministic</span>
                     </div>

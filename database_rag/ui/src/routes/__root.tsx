@@ -15,10 +15,14 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
-      },
+        title: 'Database RAG',
+      }
     ],
     links: [
+      {
+        rel: 'icon',
+        href: 'https://cdn-icons-png.flaticon.com/128/1104/1104982.png',
+      },
       {
         rel: 'stylesheet',
         href: appCss,
@@ -30,11 +34,11 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <TanStackDevtools
           config={{

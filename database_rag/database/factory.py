@@ -1,7 +1,10 @@
-from config import Settings
 from database.sqlalchemy_provider import SQLAlchemyProvider
 
 
-def get_database_provider(settings: Settings) -> SQLAlchemyProvider:
-    """Create the adapter selected by DATABASE_URL or legacy MSSQL settings."""
-    return SQLAlchemyProvider(settings.database_connection_url)
+def get_database_provider(connection_url: str) -> SQLAlchemyProvider:
+    """Create a database provider for the given connection URL.
+    
+    This is a factory function for dynamic database configuration.
+    The connection URL should be provided via the UI, not from static config.
+    """
+    return SQLAlchemyProvider(connection_url)

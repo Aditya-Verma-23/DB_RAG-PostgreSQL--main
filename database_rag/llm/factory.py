@@ -24,12 +24,15 @@ def get_llm(
 
     if provider_name == "groq":
         from llm.groq_provider import GroqProvider
+
         return GroqProvider(model=model_name, temperature=temp).get_llm()
     elif provider_name == "ollama_cloud":
         from llm.ollama_cloud_provider import OllamaCloudProvider
+
         return OllamaCloudProvider(model=model_name, temperature=temp).get_llm()
     elif provider_name == "ollama":
         from llm.ollama_local_provider import OllamaLocalProvider
+
         return OllamaLocalProvider(model=model_name, temperature=temp).get_llm()
     else:
         raise ValueError(f"Unknown LLM provider: {provider_name}")

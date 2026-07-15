@@ -5,7 +5,6 @@ from llm.base import LLMProvider
 
 
 class OllamaLocalProvider(LLMProvider):
-
     def __init__(
         self,
         model: str,

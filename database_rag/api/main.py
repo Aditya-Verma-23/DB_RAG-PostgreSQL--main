@@ -23,53 +23,59 @@ ENV_PATH = PROJECT_ROOT / ".env"
 
 
 def update_env_file(key: str, value: str):
-    import os
     lines = []
     if ENV_PATH.exists():
         with open(ENV_PATH, "r", encoding="utf-8") as f:
             lines = f.readlines()
-            
+
     updated = False
     new_lines = []
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}=") or stripped.startswith(f"#{key}="):
+        if (
+            stripped.startswith(f"{key}=")
+            or stripped.startswith(f"# {key}=")
+            or stripped.startswith(f"#{key}=")
+        ):
             new_lines.append(f"{key}={value}\n")
             updated = True
         else:
             new_lines.append(line)
-            
+
     if not updated:
         if new_lines and not new_lines[-1].endswith("\n"):
             new_lines.append("\n")
         new_lines.append(f"{key}={value}\n")
-        
+
     with open(ENV_PATH, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
 
 def configure_database(connection_url_or_obj: str | URL) -> dict:
     global db_provider, text_to_sql
-    
+
     new_provider = SQLAlchemyProvider(connection_url_or_obj)
     try:
         new_provider.connect()
         if not new_provider.test_connection():
             new_provider.disconnect()
-            return {"success": False, "error": "Database connection test failed. Please verify credentials."}
+            return {
+                "success": False,
+                "error": "Database connection test failed. Please verify credentials.",
+            }
     except Exception as e:
         try:
             new_provider.disconnect()
         except Exception:
             pass
         return {"success": False, "error": f"Database connection failed: {str(e)}"}
-        
+
     if db_provider:
         try:
             db_provider.disconnect()
         except Exception:
             pass
-            
+
     db_provider = new_provider
     text_to_sql = TextToSQL(db_provider)
     return {"success": True}
@@ -78,13 +84,10 @@ def configure_database(connection_url_or_obj: str | URL) -> dict:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global db_provider, text_to_sql
-    try:
-        db_provider = get_database_provider(settings)
-        db_provider.connect()
-        text_to_sql = TextToSQL(db_provider)
-    except Exception as e:
-        print(f"Warning: Failed to connect to default database on startup: {e}")
-        # Leave db_provider and text_to_sql as None or uninitialized
+    # No static database configuration - everything is configured dynamically via UI
+    print("Starting application with dynamic database configuration (no static config)")
+    db_provider = None
+    text_to_sql = None
     yield
     if db_provider:
         try:
@@ -93,9 +96,7 @@ async def lifespan(app: FastAPI):
             pass
 
 
-app = FastAPI(
-    title="Database Text-to-SQL API", version="1.0.0", lifespan=lifespan
-)
+app = FastAPI(title="Database Text-to-SQL API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -147,27 +148,40 @@ async def health_check():
 @app.get("/schema", response_model=SchemaResponse)
 async def get_schema():
     if not db_provider:
-        raise HTTPException(status_code=503, detail="Database not initialized. Please configure settings.")
+        raise HTTPException(
+            status_code=503,
+            detail="Database not initialized. Please configure settings.",
+        )
     try:
         return SchemaResponse(db_schema=db_provider.get_schema())
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Failed to retrieve schema: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"Failed to retrieve schema: {str(e)}"
+        )
 
 
 @app.post("/schema/refresh", response_model=SchemaResponse)
 async def refresh_schema():
     if not db_provider:
-        raise HTTPException(status_code=503, detail="Database not initialized. Please configure settings.")
+        raise HTTPException(
+            status_code=503,
+            detail="Database not initialized. Please configure settings.",
+        )
     try:
         return SchemaResponse(db_schema=db_provider.refresh_schema())
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Failed to refresh schema: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"Failed to refresh schema: {str(e)}"
+        )
 
 
 @app.post("/query", response_model=QueryResponse)
 async def execute_query(request: QueryRequest):
     if not text_to_sql:
-        raise HTTPException(status_code=503, detail="Text-to-SQL not initialized. Please connect to a database first.")
+        raise HTTPException(
+            status_code=503,
+            detail="Text-to-SQL not initialized. Please connect to a database first.",
+        )
 
     try:
         sql, results = text_to_sql.execute_question_with_sql(request.question)
@@ -195,7 +209,7 @@ async def get_database_config():
             "database": None,
             "username": None,
         }
-        
+
     url = db_provider.connection_string
     masked_url = ""
     dialect = None
@@ -203,25 +217,28 @@ async def get_database_config():
     port = None
     database = None
     username = None
-    
+
     try:
         dialect = db_provider.dialect
     except Exception:
         pass
-        
+
     try:
         url_obj = make_url(url)
-        
+
         if "odbc_connect" in url_obj.query:
             import re
+
             odbc_str = url_obj.query["odbc_connect"]
             if isinstance(odbc_str, tuple):
                 odbc_str = odbc_str[0]
-            masked_odbc = re.sub(r"(Password|Pwd)=([^;]+)", r"\1=*****", odbc_str, flags=re.IGNORECASE)
+            masked_odbc = re.sub(
+                r"(Password|Pwd)=([^;]+)", r"\1=*****", odbc_str, flags=re.IGNORECASE
+            )
             new_query = dict(url_obj.query)
             new_query["odbc_connect"] = masked_odbc
             url_obj = url_obj.set(query=new_query)
-            
+
         masked_url = url_obj.render_as_string(hide_password=True)
         host = url_obj.host
         port = url_obj.port
@@ -229,9 +246,9 @@ async def get_database_config():
         username = url_obj.username
     except Exception:
         masked_url = str(url)
-        
+
     connected = db_provider.test_connection()
-    
+
     return {
         "database_connected": connected,
         "dialect": dialect,
@@ -247,23 +264,82 @@ async def get_database_config():
 async def update_database_config(config: DatabaseConfigRequest):
     if config.connection_url:
         connection_url = config.connection_url
-        
-        # Detect raw ODBC connection strings and wrap them in a SQLAlchemy URL
-        if "://" not in connection_url and ("Server=" in connection_url or "server=" in connection_url or "Driver=" in connection_url or "driver=" in connection_url):
-            from urllib.parse import quote_plus
-            connection_url = f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_url)}"
+
+        # Detect raw ODBC connection strings and parse them properly
+        if "://" not in connection_url and (
+            "Server=" in connection_url
+            or "server=" in connection_url
+            or "Driver=" in connection_url
+            or "driver=" in connection_url
+        ):
+            # Parse the raw ODBC string components
+            import re
+            
+            # Extract components from ODBC string
+            server_match = re.search(r'(?:Server|server)=([^;]+)', connection_url)
+            database_match = re.search(r'(?:Database|database)=([^;]+)', connection_url)
+            user_id_match = re.search(r'(?:User Id|User ID|uid|Uid)=([^;]+)', connection_url, re.IGNORECASE)
+            password_match = re.search(r'(?:Password|pwd|Pwd)=([^;]+)', connection_url, re.IGNORECASE)
+            driver_match = re.search(r'(?:Driver|driver)=([^;]+)', connection_url)
+            trust_cert_match = re.search(r'(?:TrustServerCertificate|Trust_Server_Certificate)=([^;]+)', connection_url, re.IGNORECASE)
+            
+            if server_match:
+                server_value = server_match.group(1).strip()
+                # Handle server,port format (e.g., 192.168.1.95,9905)
+                if ',' in server_value:
+                    server_parts = server_value.split(',')
+                    server = server_parts[0].strip()
+                    port = server_parts[1].strip()
+                else:
+                    server = server_value
+                    port = "1433"
+                
+                database = database_match.group(1).strip() if database_match else ""
+                username = user_id_match.group(1).strip() if user_id_match else ""
+                password = password_match.group(1) if password_match else ""
+                driver = driver_match.group(1).strip() if driver_match else "ODBC Driver 18 for SQL Server"
+                trust_cert = trust_cert_match.group(1).strip().lower() in ('true', 'yes', '1') if trust_cert_match else True
+                
+                # Build proper SQLAlchemy URL
+                from sqlalchemy.engine import URL
+                connection_url = URL.create(
+                    "mssql+pyodbc",
+                    username=username,
+                    password=password,
+                    host=server,
+                    port=int(port) if port.isdigit() else 1433,
+                    database=database,
+                    query={
+                        "driver": driver,
+                        "TrustServerCertificate": "yes" if trust_cert else "no"
+                    }
+                )
+            else:
+                # Fallback to odbc_connect method if server not found
+                from urllib.parse import quote_plus
+                connection_url = (
+                    f"mssql+pyodbc:///?odbc_connect={quote_plus(connection_url)}"
+                )
     else:
         if not config.dialect:
-            raise HTTPException(status_code=400, detail="Either connection_url or dialect must be provided.")
-        
+            raise HTTPException(
+                status_code=400,
+                detail="Either connection_url or dialect must be provided.",
+            )
+
         dialect = config.dialect.lower()
         if dialect == "sqlite":
             if not config.database:
-                raise HTTPException(status_code=400, detail="Database file path must be provided for SQLite.")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Database file path must be provided for SQLite.",
+                )
             connection_url = f"sqlite:///{config.database}"
         elif dialect == "postgresql":
             if not config.database:
-                raise HTTPException(status_code=400, detail="Database name is required.")
+                raise HTTPException(
+                    status_code=400, detail="Database name is required."
+                )
             connection_url = URL.create(
                 "postgresql+psycopg",
                 username=config.username,
@@ -274,7 +350,9 @@ async def update_database_config(config: DatabaseConfigRequest):
             )
         elif dialect == "mssql":
             if not config.database:
-                raise HTTPException(status_code=400, detail="Database name is required.")
+                raise HTTPException(
+                    status_code=400, detail="Database name is required."
+                )
             driver = config.driver or "ODBC Driver 18 for SQL Server"
             connection_url = URL.create(
                 "mssql+pyodbc",
@@ -285,12 +363,16 @@ async def update_database_config(config: DatabaseConfigRequest):
                 database=config.database,
                 query={
                     "driver": driver,
-                    "TrustServerCertificate": "yes" if config.trust_server_certificate else "no",
+                    "TrustServerCertificate": "yes"
+                    if config.trust_server_certificate
+                    else "no",
                 },
             )
         elif dialect == "mysql":
             if not config.database:
-                raise HTTPException(status_code=400, detail="Database name is required.")
+                raise HTTPException(
+                    status_code=400, detail="Database name is required."
+                )
             connection_url = URL.create(
                 "mysql+pymysql",
                 username=config.username,
@@ -300,29 +382,21 @@ async def update_database_config(config: DatabaseConfigRequest):
                 database=config.database,
             )
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported dialect: {dialect}")
+            raise HTTPException(
+                status_code=400, detail=f"Unsupported dialect: {dialect}"
+            )
 
     # Configure the database
     res = configure_database(connection_url)
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["error"])
-        
-    # Update in-memory settings
-    conn_str = str(connection_url) if isinstance(connection_url, URL) else connection_url
-    settings.database_url = conn_str
-    
-    # Save to .env
-    try:
-        update_env_file("DATABASE_URL", conn_str)
-    except Exception as e:
-        return {
-            "status": "warning",
-            "message": f"Database connected, but failed to save to .env: {str(e)}"
-        }
-        
+
+    # Note: Configuration is NOT saved to .env - fully dynamic via UI
+    # Configuration persists only for the current session
+
     return {
         "status": "ok",
-        "message": "Database connected successfully and configuration saved."
+        "message": "Database connected successfully. Configuration is session-only (dynamic mode).",
     }
 
 
@@ -350,65 +424,47 @@ async def get_llm_config():
 @app.post("/config/llm")
 async def update_llm_config(config: LLMConfigRequest):
     global text_to_sql
-    
+
     # 1. Update in-memory settings
     if config.provider is not None:
         if config.provider not in ["groq", "ollama", "ollama_cloud"]:
-            raise HTTPException(status_code=400, detail=f"Invalid provider: {config.provider}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid provider: {config.provider}"
+            )
         settings.default_llm_provider = config.provider
-        
+
     if config.model is not None:
         settings.default_model = config.model
-        
+
     if config.temperature is not None:
         settings.temperature = config.temperature
-        
+
     if config.groq_api_key is not None:
         settings.groq_api_key = config.groq_api_key
-        
+
     if config.ollama_cloud_api_key is not None:
         settings.ollama_cloud_api_key = config.ollama_cloud_api_key
-        
+
     if config.ollama_base_url is not None:
         settings.ollama_base_url = config.ollama_base_url
-        
-    # 2. Persist to .env
-    try:
-        if config.provider is not None:
-            update_env_file("DEFAULT_LLM_PROVIDER", config.provider)
-        if config.model is not None:
-            update_env_file("DEFAULT_MODEL", config.model)
-            if config.provider == "ollama_cloud":
-                update_env_file("OLLAMA_CLOUD_MODEL", config.model)
-        if config.temperature is not None:
-            update_env_file("TEMPERATURE", str(config.temperature))
-        if config.groq_api_key is not None:
-            update_env_file("GROQ_API_KEY", config.groq_api_key)
-        if config.ollama_cloud_api_key is not None:
-            update_env_file("OLLAMA_CLOUD_API_KEY", config.ollama_cloud_api_key)
-        if config.ollama_base_url is not None:
-            update_env_file("OLLAMA_BASE_URL", config.ollama_base_url)
-    except Exception as e:
-        return {
-            "status": "warning",
-            "message": f"LLM settings updated in memory, but failed to save to .env: {str(e)}"
-        }
-        
-    # Reinitialize TextToSQL chain
+
+    # Note: Configuration is NOT saved to .env - fully dynamic via UI
+    # Configuration persists only for the current session
+
+    # Reinitialize TextToSQL chain with new LLM settings
     if db_provider:
         try:
             text_to_sql = TextToSQL(db_provider)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to initialize LLM with new settings: {str(e)}")
-            
-    return {
-        "status": "ok",
-        "message": "LLM settings updated successfully and saved."
-    }
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to initialize LLM with new settings: {str(e)}",
+            )
+
+    return {"status": "ok", "message": "LLM settings updated successfully. Configuration is session-only (dynamic mode)."}
 
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

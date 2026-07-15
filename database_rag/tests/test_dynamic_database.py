@@ -13,17 +13,19 @@ class DynamicDatabaseTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_database_url_selects_sqlite_without_mssql_settings(self) -> None:
-        provider = get_database_provider(Settings(database_url="sqlite://"))
+        provider = get_database_provider("sqlite://")
         provider.connect()
         try:
             self.assertEqual(provider.dialect, "sqlite")
-            self.assertEqual(provider.execute_query("SELECT 1 AS value"), [{"value": 1}])
+            self.assertEqual(
+                provider.execute_query("SELECT 1 AS value"), [{"value": 1}]
+            )
         finally:
             provider.disconnect()
 
     def test_postgresql_url_selects_postgresql_dialect(self) -> None:
         provider = get_database_provider(
-            Settings(database_url="postgresql+psycopg://user:pass@localhost/app")
+            "postgresql+psycopg://user:pass@localhost/app"
         )
         provider.connect()
         try:
@@ -54,8 +56,7 @@ class DynamicDatabaseTests(unittest.TestCase):
     def test_post_database_config_sqlite(self) -> None:
         # SQLite in-memory database test via POST endpoint
         response = self.client.post(
-            "/config/database",
-            json={"connection_url": "sqlite://"}
+            "/config/database", json={"connection_url": "sqlite://"}
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -72,12 +73,9 @@ class DynamicDatabaseTests(unittest.TestCase):
         # Test with invalid connection URL, should fail immediately
         response = self.client.post(
             "/config/database",
-            json={
-                "connection_url": "garbage_dialect://invalid_path"
-            }
+            json={"connection_url": "garbage_dialect://invalid_path"},
         )
         self.assertEqual(response.status_code, 400)
-
 
     def test_get_llm_config(self) -> None:
         response = self.client.get("/config/llm")
@@ -90,11 +88,7 @@ class DynamicDatabaseTests(unittest.TestCase):
     def test_post_llm_config(self) -> None:
         response = self.client.post(
             "/config/llm",
-            json={
-                "provider": "ollama",
-                "model": "llama3:8b",
-                "temperature": 0.5
-            }
+            json={"provider": "ollama", "model": "llama3:8b", "temperature": 0.5},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -110,4 +104,3 @@ class DynamicDatabaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

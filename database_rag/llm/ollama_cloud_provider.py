@@ -6,7 +6,6 @@ from llm.base import LLMProvider
 
 
 class OllamaCloudProvider(LLMProvider):
-
     def __init__(
         self,
         model: str,
@@ -25,8 +24,6 @@ class OllamaCloudProvider(LLMProvider):
             base_url=settings.ollama_cloud_base_url,
             temperature=self.temperature,
             client_kwargs={
-                "headers": {
-                    "Authorization": f"Bearer {settings.ollama_cloud_api_key}"
-                }
-            }
+                "headers": {"Authorization": f"Bearer {settings.ollama_cloud_api_key}"}
+            },
         )
