@@ -1876,3 +1876,28 @@ input:checked + .slider:before {
 .range-slider::-moz-range-thumb:active {
   box-shadow: 0 0 0 10px var(--accent-glow);
 }
+
+/* User Message Actions Hover Effect */
+.user-message-actions {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.message-bubble-group:hover .user-message-actions {
+  opacity: 0.5;
+  visibility: visible;
+}
+
+.user-message-actions:hover {
+  opacity: 1 !important;
+}
+
+.user-message-actions button {
+  transition: color 0.2s ease;
+}
+
+.user-message-actions button:hover {
+  color: var(--accent) !important;
+}
+

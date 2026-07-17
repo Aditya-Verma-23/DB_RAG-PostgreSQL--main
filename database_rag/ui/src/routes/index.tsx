@@ -1,30 +1,31 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { 
-  Database, 
-  Cpu, 
-  RefreshCw, 
-  Check, 
-  Copy, 
-  AlertTriangle, 
-  Trash2, 
-  Send, 
-  Wifi, 
-  WifiOff, 
-  ChevronDown, 
-  ChevronRight, 
-  Key, 
-  Link as LinkIcon, 
-  Server, 
-  Table, 
-  Search, 
+import {
+  Database,
+  Cpu,
+  RefreshCw,
+  Check,
+  Copy,
+  AlertTriangle,
+  Trash2,
+  Send,
+  Wifi,
+  WifiOff,
+  ChevronDown,
+  ChevronRight,
+  Key,
+  Link as LinkIcon,
+  Server,
+  Table,
+  Search,
   Code,
   Info,
   Activity,
   Settings,
   X,
   MessageSquare,
-  Plus
+  Plus,
+  Edit2
 } from 'lucide-react'
 
 export const Route = createFileRoute('/')({ component: ChatApp })
@@ -94,7 +95,7 @@ const parseSchema = (text: string): SchemaTable[] => {
       const afterPrefix = trimmed.substring(type === 'VIEW' ? 5 : 6).trim();
       const openParenIndex = afterPrefix.indexOf('(');
       const closeParenIndex = afterPrefix.lastIndexOf(')');
-      
+
       let name = afterPrefix;
       let columnsStr = '';
       if (openParenIndex !== -1 && closeParenIndex !== -1) {
@@ -132,7 +133,7 @@ const parseColumns = (columnsStr: string): Array<{ name: string; type: string }>
   const cols: Array<{ name: string; type: string }> = [];
   let current = '';
   let parenDepth = 0;
-  
+
   for (let i = 0; i < columnsStr.length; i++) {
     const char = columnsStr[i];
     if (char === '(') {
@@ -140,7 +141,7 @@ const parseColumns = (columnsStr: string): Array<{ name: string; type: string }>
     } else if (char === ')') {
       parenDepth--;
     }
-    
+
     if (char === ',' && parenDepth === 0) {
       pushColumn(current);
       current = '';
@@ -151,7 +152,7 @@ const parseColumns = (columnsStr: string): Array<{ name: string; type: string }>
   if (current) {
     pushColumn(current);
   }
-  
+
   function pushColumn(colText: string) {
     const trimmed = colText.trim();
     if (!trimmed) return;
@@ -165,7 +166,7 @@ const parseColumns = (columnsStr: string): Array<{ name: string; type: string }>
       cols.push({ name: trimmed, type: 'UNKNOWN' });
     }
   }
-  
+
   return cols;
 };
 
@@ -189,10 +190,10 @@ const parseConnectionString = (connectionString: string) => {
     if (connectionString.startsWith('mssql+pyodbc://')) {
       const url = connectionString.replace('mssql+pyodbc://', 'http://');
       const parsed = new URL(url);
-      
+
       const driverMatch = connectionString.match(/[?&]driver=([^&]+)/i);
       const trustCertMatch = connectionString.match(/[?&]TrustServerCertificate=([^&]+)/i);
-      
+
       return {
         dialect: 'mssql',
         host: parsed.hostname || 'localhost',
@@ -208,11 +209,11 @@ const parseConnectionString = (connectionString: string) => {
     // Handle postgresql://, mysql://, etc.
     const dialectMatch = connectionString.match(/^([^:]+):\/\//);
     const dialect = dialectMatch ? dialectMatch[1] : 'postgresql';
-    
+
     // Remove dialect prefix and parse
     const urlToParse = connectionString.replace(/^[^:]+:\/\//, 'http://');
     const parsed = new URL(urlToParse);
-    
+
     return {
       dialect: dialect === 'postgresql' ? 'postgresql' : dialect === 'mysql' ? 'mysql' : dialect === 'sqlite' ? 'sqlite' : 'postgresql',
       host: parsed.hostname || 'localhost',
@@ -276,19 +277,68 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+function UserMessageActions({ text, onEdit }: { text: string; onEdit: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <div className="user-message-actions" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', marginLeft: '8px' }}>
+      <button 
+        onClick={handleCopy} 
+        title={copied ? "Copied!" : "Copy Question"}
+        type="button"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '2px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted)'
+        }}
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      <button 
+        onClick={onEdit} 
+        title="Edit Question"
+        type="button"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '2px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted)'
+        }}
+      >
+        <Edit2 size={14} />
+      </button>
+    </div>
+  )
+}
+
 function ChatApp() {
   const [activeTab, setActiveTab] = useState<'database' | 'llm' | 'schema'>('database')
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null) // null = loading
   const [dbConnected, setDbConnected] = useState<boolean>(false)
   const [loading, setLoading] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  
+
   // Chat session management
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([
     { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database, and I will generate SQL queries to fetch the answers.' }
   ])
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editValue, setEditValue] = useState('')
 
   // Database configurations
   const [dbConfigMethod, setDbConfigMethod] = useState<'url' | 'fields'>('url')
@@ -313,8 +363,8 @@ function ChatApp() {
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
 
   // UI status logs
-  const [dbStatusMsg, setDbStatusMsg] = useState<{type: 'success' | 'error', text: string} | null>(null)
-  const [llmStatusMsg, setLlmStatusMsg] = useState<{type: 'success' | 'error', text: string} | null>(null)
+  const [dbStatusMsg, setDbStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [llmStatusMsg, setLlmStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   // Schema state
   const [schemaText, setSchemaText] = useState('')
@@ -343,11 +393,11 @@ function ChatApp() {
   useEffect(() => {
     const savedSessions = localStorage.getItem('chatSessions')
     const savedCurrentId = localStorage.getItem('currentSessionId')
-    
+
     if (savedSessions) {
       const sessions = JSON.parse(savedSessions)
       setChatSessions(sessions)
-      
+
       if (savedCurrentId && sessions.find((s: ChatSession) => s.id === savedCurrentId)) {
         setCurrentSessionId(savedCurrentId)
         const currentSession = sessions.find((s: ChatSession) => s.id === savedCurrentId)
@@ -386,15 +436,116 @@ function ChatApp() {
         { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database, and I will generate SQL queries to fetch the answers.' }
       ]
     }
-    
+
     setChatSessions(prev => [newSession, ...prev])
     setCurrentSessionId(newSession.id)
     setMessages(newSession.messages)
   }
 
+  const handleEditSubmit = async (idx: number, newQuestion: string) => {
+    if (!newQuestion.trim() || loading) return
+
+    const targetSessionId = currentSessionId
+    if (!targetSessionId) return
+
+    // Slice messages to the edit point and set loading message
+    const updatedMessages = messages.slice(0, idx + 2)
+    updatedMessages[idx] = { role: 'user', content: newQuestion }
+    const botIdx = idx + 1
+    updatedMessages[botIdx] = { role: 'bot', loading: true } as Message
+
+    // Update session list
+    setChatSessions(prev => prev.map(session => {
+      if (session.id === targetSessionId) {
+        const nextMessages = session.messages.slice(0, idx + 2)
+        nextMessages[idx] = { role: 'user', content: newQuestion }
+        nextMessages[botIdx] = { role: 'bot', loading: true } as Message
+        return { ...session, messages: nextMessages }
+      }
+      return session
+    }))
+
+    // Update active screen
+    setMessages(updatedMessages)
+    setLoading(true)
+    setEditingIndex(null)
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: newQuestion
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to execute query')
+      }
+
+      setChatSessions(prev => prev.map(session => {
+        if (session.id === targetSessionId) {
+          const next = [...session.messages]
+          if (next.length > botIdx) {
+            next[botIdx] = {
+              role: 'bot',
+              sql: data.sql,
+              results: data.results,
+              rowCount: data.row_count,
+            }
+          }
+          return { ...session, messages: next }
+        }
+        return session
+      }))
+
+      setMessages(prev => {
+        const next = [...prev]
+        if (next.length > botIdx) {
+          next[botIdx] = {
+            role: 'bot',
+            sql: data.sql,
+            results: data.results,
+            rowCount: data.row_count,
+          }
+        }
+        return next
+      })
+    } catch (err: any) {
+      setChatSessions(prev => prev.map(session => {
+        if (session.id === targetSessionId) {
+          const next = [...session.messages]
+          if (next.length > botIdx) {
+            next[botIdx] = {
+              role: 'bot',
+              error: err.message || 'An error occurred during query execution.'
+            }
+          }
+          return { ...session, messages: next }
+        }
+        return session
+      }))
+
+      setMessages(prev => {
+        const next = [...prev]
+        if (next.length > botIdx) {
+          next[botIdx] = {
+            role: 'bot',
+            error: err.message || 'An error occurred during query execution.'
+          }
+        }
+        return next
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const updateCurrentSession = (updatedMessages: Message[]) => {
     if (!currentSessionId) return
-    
+
     setChatSessions(prev => prev.map(session => {
       if (session.id === currentSessionId) {
         // Generate title from first user message if still "New Chat"
@@ -414,7 +565,7 @@ function ChatApp() {
   const deleteSession = (sessionId: string) => {
     setChatSessions(prev => {
       const filtered = prev.filter(s => s.id !== sessionId)
-      
+
       // If we deleted the current session, switch to another or create new
       if (sessionId === currentSessionId) {
         if (filtered.length > 0) {
@@ -435,7 +586,7 @@ function ChatApp() {
           return [newSession]
         }
       }
-      
+
       return filtered
     })
   }
@@ -484,7 +635,7 @@ function ChatApp() {
         setLlmProvider(provider)
         setLlmTemp(llmData.temperature ?? 0.0)
         setOllamaUrl(llmData.ollama_base_url || 'http://localhost:11434')
-        
+
         const modelName = llmData.model || ''
         const popularList = POPULAR_MODELS[provider as keyof typeof POPULAR_MODELS] || []
         const isPopular = popularList.some(m => m.value === modelName)
@@ -551,7 +702,7 @@ function ChatApp() {
   // Sync from URL to fields (when URL changes and user is in URL mode or just loaded)
   useEffect(() => {
     if (isSyncingFromFields) return; // Don't sync if we're currently syncing from fields
-    
+
     if (dbConfigUrl && dbConfigMethod === 'url') {
       setIsSyncingFromUrl(true);
       const parsed = parseConnectionString(dbConfigUrl);
@@ -572,7 +723,7 @@ function ChatApp() {
   // Sync from fields to URL (when any field changes and user is in fields mode)
   useEffect(() => {
     if (isSyncingFromUrl) return; // Don't sync if we're currently syncing from URL
-    
+
     if (dbConfigMethod === 'fields') {
       setIsSyncingFromFields(true);
       const url = buildConnectionString({
@@ -714,7 +865,7 @@ function ChatApp() {
       }
 
       setLlmStatusMsg({ type: 'success', text: data.message || 'LLM settings updated successfully' })
-      
+
       setMessages(prev => [...prev, {
         role: 'bot',
         content: `LLM settings updated in backend: Connected using provider **${llmProvider}** with model **${selectedModel}** (temperature ${llmTemp}).`
@@ -734,7 +885,7 @@ function ChatApp() {
     // Append user message
     const updatedMessages = [...messages, { role: 'user', content: userQuery } as Message]
     setMessages(updatedMessages)
-    
+
     // Add temporary loading bot message
     setMessages(prev => [...prev, { role: 'bot', loading: true } as Message])
     setLoading(true)
@@ -797,7 +948,7 @@ function ChatApp() {
 
   // Parse schema blocks
   const schemaTables = parseSchema(schemaText)
-  const filteredTables = schemaTables.filter(t => 
+  const filteredTables = schemaTables.filter(t =>
     t.name.toLowerCase().includes(schemaSearch.toLowerCase()) ||
     t.columnsStr.toLowerCase().includes(schemaSearch.toLowerCase())
   )
@@ -827,7 +978,7 @@ function ChatApp() {
         {/* Sidebar Header with New Chat Button */}
         <div className="sidebar-header">
           <h3>Chat Sessions</h3>
-          <button 
+          <button
             className="btn btn-sm btn-primary"
             onClick={createNewChat}
             type="button"
@@ -837,7 +988,7 @@ function ChatApp() {
             New Chat
           </button>
         </div>
-        
+
         {/* Sessions List */}
         <div className="sessions-list">
           {chatSessions.length === 0 ? (
@@ -848,8 +999,8 @@ function ChatApp() {
             </div>
           ) : (
             chatSessions.map((session) => (
-              <div 
-                key={session.id} 
+              <div
+                key={session.id}
                 className={`session-item ${currentSessionId === session.id ? 'active' : ''}`}
                 onClick={() => loadSession(session.id)}
               >
@@ -867,7 +1018,7 @@ function ChatApp() {
                     </span>
                   </div>
                 </div>
-                <button 
+                <button
                   className="session-item-delete"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -909,9 +1060,9 @@ function ChatApp() {
             </div>
           </div>
           <div className="chat-header-actions">
-            <button 
-              className="icon-btn" 
-              title="Settings" 
+            <button
+              className="icon-btn"
+              title="Settings"
               onClick={() => setSettingsOpen(true)}
               type="button"
             >
@@ -940,100 +1091,174 @@ function ChatApp() {
                   </svg>
                 )}
               </div>
-              
-              {msg.loading ? (
-                <div className="message-content loading">
-                  <div className="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
+
+              <div className="message-bubble-group" style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
+                {msg.loading ? (
+                  <div className="message-content loading">
+                    <div className="typing-indicator">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="message-content">
-                  {msg.content && <div className="msg-text">{msg.content}</div>}
-                  
-                  {msg.sql && (
-                    <div className="sql-box">
-                      <div className="sql-header">
-                        <div className="sql-title">
-                          <Code size={14} />
-                          <span>Generated SQL Query</span>
+                ) : (
+                  <>
+                    <div className="message-content">
+                      {msg.content && (
+                        editingIndex === idx ? (
+                          <div className="edit-message-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', minWidth: '300px' }}>
+                            <textarea 
+                              className="edit-message-textarea"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              style={{
+                                width: '100%',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-main)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '6px',
+                                padding: '8px',
+                                minHeight: '60px',
+                                resize: 'vertical',
+                                fontFamily: 'inherit',
+                                fontSize: '0.9rem'
+                              }}
+                            />
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button 
+                                onClick={() => setEditingIndex(null)}
+                                type="button"
+                                style={{
+                                  background: 'transparent',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--text-muted)',
+                                  borderRadius: '4px',
+                                  padding: '4px 10px',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button 
+                                onClick={() => handleEditSubmit(idx, editValue)}
+                                type="button"
+                                style={{
+                                  background: 'var(--accent)',
+                                  border: 'none',
+                                  color: 'white',
+                                  borderRadius: '4px',
+                                  padding: '4px 10px',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Save & Run
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="msg-text">
+                            {msg.content}
+                          </div>
+                        )
+                      )}
+
+                      {msg.sql && (
+                        <div className="sql-box">
+                          <div className="sql-header">
+                            <div className="sql-title">
+                              <Code size={14} />
+                              <span>Generated SQL Query</span>
+                            </div>
+                            <CopyButton text={msg.sql} />
+                          </div>
+                          <pre className="sql-pre">
+                            <code>{msg.sql}</code>
+                          </pre>
                         </div>
-                        <CopyButton text={msg.sql} />
-                      </div>
-                      <pre className="sql-pre">
-                        <code>{msg.sql}</code>
-                      </pre>
-                    </div>
-                  )}
+                      )}
 
-                  {msg.results && msg.results.length > 0 && (
-                    <div className="results-box">
-                      <div className="results-header">
-                        <div className="results-title">
-                          <Table size={14} />
-                          <span>Query Results ({msg.rowCount || msg.results.length} rows)</span>
+                      {msg.results && msg.results.length > 0 && (
+                        <div className="results-box">
+                          <div className="results-header">
+                            <div className="results-title">
+                              <Table size={14} />
+                              <span>Query Results ({msg.rowCount || msg.results.length} rows)</span>
+                            </div>
+                            <CopyButton text={JSON.stringify(msg.results, null, 2)} />
+                          </div>
+                          <div className="results-table-container">
+                            <table className="results-table">
+                              <thead>
+                                <tr>
+                                  {Object.keys(msg.results[0]).map((key) => (
+                                    <th key={key}>{key}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {msg.results.map((row, rIdx) => (
+                                  <tr key={rIdx}>
+                                    {Object.values(row).map((val: any, cIdx) => {
+                                      let displayVal = val
+                                      let isNull = false
+                                      if (val === null || val === undefined) {
+                                        displayVal = 'NULL'
+                                        isNull = true
+                                      } else if (typeof val === 'boolean') {
+                                        displayVal = val ? 'TRUE' : 'FALSE'
+                                      } else if (typeof val === 'object') {
+                                        displayVal = JSON.stringify(val)
+                                      }
+                                      return (
+                                        <td key={cIdx} className={isNull ? 'null-val' : ''}>
+                                          {displayVal}
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
-                        <CopyButton text={JSON.stringify(msg.results, null, 2)} />
-                      </div>
-                      <div className="results-table-container">
-                        <table className="results-table">
-                          <thead>
-                            <tr>
-                              {Object.keys(msg.results[0]).map((key) => (
-                                <th key={key}>{key}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {msg.results.map((row, rIdx) => (
-                              <tr key={rIdx}>
-                                {Object.values(row).map((val: any, cIdx) => {
-                                  let displayVal = val
-                                  let isNull = false
-                                  if (val === null || val === undefined) {
-                                    displayVal = 'NULL'
-                                    isNull = true
-                                  } else if (typeof val === 'boolean') {
-                                    displayVal = val ? 'TRUE' : 'FALSE'
-                                  } else if (typeof val === 'object') {
-                                    displayVal = JSON.stringify(val)
-                                  }
-                                  return (
-                                    <td key={cIdx} className={isNull ? 'null-val' : ''}>
-                                      {displayVal}
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
+                      )}
 
-                  {msg.results && msg.results.length === 0 && msg.sql && (
-                    <div className="no-results-box">
-                      <Info size={16} />
-                      <span>Query executed successfully but returned 0 rows.</span>
-                    </div>
-                  )}
+                      {msg.results && msg.results.length === 0 && msg.sql && (
+                        <div className="no-results-box">
+                          <Info size={16} />
+                          <span>Query executed successfully but returned 0 rows.</span>
+                        </div>
+                      )}
 
-                  {msg.error && (
-                    <div className="error-box">
-                      <div className="error-header">
-                        <AlertTriangle size={16} />
-                        <span>Execution Error</span>
-                      </div>
-                      <div className="error-details">
-                        {msg.error}
-                      </div>
+                      {msg.error && (
+                        <div className="error-box">
+                          <div className="error-header">
+                            <AlertTriangle size={16} />
+                            <span>Execution Error</span>
+                          </div>
+                          <div className="error-details">
+                            {msg.error}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {msg.role === 'user' && !loading && editingIndex !== idx && (
+                      <div className="user-message-actions-wrapper" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingRight: '8px' }}>
+                        <UserMessageActions 
+                          text={msg.content || ''}
+                          onEdit={() => {
+                            setEditingIndex(idx)
+                            setEditValue(msg.content || '')
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           ))}
           <div ref={messagesEndRef} />
@@ -1047,8 +1272,8 @@ function ChatApp() {
             </div>
           )}
           <div className={`chat-input-wrapper ${!dbConnected ? 'disabled' : ''}`}>
-            <textarea 
-              className="chat-input" 
+            <textarea
+              className="chat-input"
               placeholder={dbConnected ? "Ask a question about your database (e.g. 'show top 5 items')" : "Connect to a database first..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -1056,9 +1281,9 @@ function ChatApp() {
               disabled={!dbConnected || loading}
               rows={1}
             />
-            <button 
-              className="send-btn" 
-              onClick={handleSend} 
+            <button
+              className="send-btn"
+              onClick={handleSend}
               disabled={!input.trim() || !dbConnected || loading}
               type="button"
             >
@@ -1078,9 +1303,9 @@ function ChatApp() {
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="modal-tabs">
-              <button 
+              <button
                 className={`modal-tab ${activeTab === 'database' ? 'active' : ''}`}
                 onClick={() => setActiveTab('database')}
                 type="button"
@@ -1088,7 +1313,7 @@ function ChatApp() {
                 <Database size={16} />
                 Database
               </button>
-              <button 
+              <button
                 className={`modal-tab ${activeTab === 'llm' ? 'active' : ''}`}
                 onClick={() => setActiveTab('llm')}
                 type="button"
@@ -1096,7 +1321,7 @@ function ChatApp() {
                 <Cpu size={16} />
                 LLM
               </button>
-              <button 
+              <button
                 className={`modal-tab ${activeTab === 'schema' ? 'active' : ''}`}
                 onClick={() => setActiveTab('schema')}
                 type="button"
@@ -1113,15 +1338,15 @@ function ChatApp() {
                   <div className="schema-browser">
                     <div className="search-box-container">
                       <Search size={16} className="search-icon" />
-                      <input 
-                        type="text" 
-                        placeholder="Search tables or columns..." 
+                      <input
+                        type="text"
+                        placeholder="Search tables or columns..."
                         value={schemaSearch}
                         onChange={(e) => setSchemaSearch(e.target.value)}
                         className="schema-search-input"
                       />
                     </div>
-                    
+
                     <div className="schema-list">
                       {filteredTables.length === 0 ? (
                         <div className="no-results">No matching tables found.</div>
@@ -1131,7 +1356,7 @@ function ChatApp() {
                           const cols = parseColumns(tbl.columnsStr)
                           return (
                             <div key={tbl.name} className={`schema-card ${isExpanded ? 'expanded' : ''}`}>
-                              <div 
+                              <div
                                 className="schema-card-header"
                                 onClick={() => toggleTableExpanded(tbl.name)}
                               >
@@ -1183,7 +1408,7 @@ function ChatApp() {
                         })
                       )}
                     </div>
-                    
+
                     <div className="schema-footer">
                       <button className="btn btn-secondary btn-sm" onClick={handleRefreshSchema} disabled={schemaLoading} type="button" style={{ width: '100%' }}>
                         <RefreshCw size={14} className={schemaLoading ? 'spin-icon' : ''} />
@@ -1206,14 +1431,14 @@ function ChatApp() {
                   </div>
 
                   <div className="config-method-toggle">
-                    <button 
+                    <button
                       type="button"
                       className={`method-btn ${dbConfigMethod === 'url' ? 'active' : ''}`}
                       onClick={() => setDbConfigMethod('url')}
                     >
                       Connection URL
                     </button>
-                    <button 
+                    <button
                       type="button"
                       className={`method-btn ${dbConfigMethod === 'fields' ? 'active' : ''}`}
                       onClick={() => setDbConfigMethod('fields')}
@@ -1226,9 +1451,9 @@ function ChatApp() {
                     {dbConfigMethod === 'url' ? (
                       <div className="config-group">
                         <label htmlFor="dbUri-modal">Database Connection URL</label>
-                        <textarea 
-                          id="dbUri-modal" 
-                          className="config-textarea" 
+                        <textarea
+                          id="dbUri-modal"
+                          className="config-textarea"
                           placeholder="dialect://user:pass@host:port/database"
                           value={dbConfigUrl}
                           onChange={(e) => {
@@ -1257,8 +1482,8 @@ function ChatApp() {
                       <>
                         <div className="config-group">
                           <label htmlFor="dialect-modal">Database Dialect</label>
-                          <select 
-                            id="dialect-modal" 
+                          <select
+                            id="dialect-modal"
                             className="config-select"
                             value={dbDialect}
                             onChange={(e) => setDbDialect(e.target.value)}
@@ -1273,10 +1498,10 @@ function ChatApp() {
                         {dbDialect === 'sqlite' ? (
                           <div className="config-group">
                             <label htmlFor="dbName-modal">Database File Path</label>
-                            <input 
-                              type="text" 
-                              id="dbName-modal" 
-                              className="config-input" 
+                            <input
+                              type="text"
+                              id="dbName-modal"
+                              className="config-input"
                               placeholder="e.g. database.db"
                               value={dbName}
                               onChange={(e) => setDbName(e.target.value)}
@@ -1287,10 +1512,10 @@ function ChatApp() {
                             <div className="config-row">
                               <div className="config-group flex-grow">
                                 <label htmlFor="dbHost-modal">Host</label>
-                                <input 
-                                  type="text" 
-                                  id="dbHost-modal" 
-                                  className="config-input" 
+                                <input
+                                  type="text"
+                                  id="dbHost-modal"
+                                  className="config-input"
                                   placeholder="localhost"
                                   value={dbHost}
                                   onChange={(e) => setDbHost(e.target.value)}
@@ -1298,10 +1523,10 @@ function ChatApp() {
                               </div>
                               <div className="config-group" style={{ width: '100px' }}>
                                 <label htmlFor="dbPort-modal">Port</label>
-                                <input 
-                                  type="text" 
-                                  id="dbPort-modal" 
-                                  className="config-input" 
+                                <input
+                                  type="text"
+                                  id="dbPort-modal"
+                                  className="config-input"
                                   placeholder={dbDialect === 'postgresql' ? '5432' : dbDialect === 'mysql' ? '3306' : '1433'}
                                   value={dbPort}
                                   onChange={(e) => setDbPort(e.target.value)}
@@ -1311,10 +1536,10 @@ function ChatApp() {
 
                             <div className="config-group">
                               <label htmlFor="dbName-modal">Database Name</label>
-                              <input 
-                                type="text" 
-                                id="dbName-modal" 
-                                className="config-input" 
+                              <input
+                                type="text"
+                                id="dbName-modal"
+                                className="config-input"
                                 placeholder="my_database"
                                 value={dbName}
                                 onChange={(e) => setDbName(e.target.value)}
@@ -1323,10 +1548,10 @@ function ChatApp() {
 
                             <div className="config-group">
                               <label htmlFor="dbUser-modal">Username</label>
-                              <input 
-                                type="text" 
-                                id="dbUser-modal" 
-                                className="config-input" 
+                              <input
+                                type="text"
+                                id="dbUser-modal"
+                                className="config-input"
                                 value={dbUser}
                                 onChange={(e) => setDbUser(e.target.value)}
                               />
@@ -1334,10 +1559,10 @@ function ChatApp() {
 
                             <div className="config-group">
                               <label htmlFor="dbPassword-modal">Password</label>
-                              <input 
-                                type="password" 
-                                id="dbPassword-modal" 
-                                className="config-input" 
+                              <input
+                                type="password"
+                                id="dbPassword-modal"
+                                className="config-input"
                                 value={dbPassword}
                                 onChange={(e) => setDbPassword(e.target.value)}
                               />
@@ -1347,10 +1572,10 @@ function ChatApp() {
                               <>
                                 <div className="config-group">
                                   <label htmlFor="dbDriver-modal">ODBC Driver</label>
-                                  <input 
-                                    type="text" 
-                                    id="dbDriver-modal" 
-                                    className="config-input" 
+                                  <input
+                                    type="text"
+                                    id="dbDriver-modal"
+                                    className="config-input"
                                     value={dbDriver}
                                     onChange={(e) => setDbDriver(e.target.value)}
                                   />
@@ -1360,8 +1585,8 @@ function ChatApp() {
                                   <div className="toggle-container">
                                     <label htmlFor="dbTrustCert-modal">Trust Server Certificate</label>
                                     <label className="switch">
-                                      <input 
-                                        type="checkbox" 
+                                      <input
+                                        type="checkbox"
                                         id="dbTrustCert-modal"
                                         checked={dbTrustCert}
                                         onChange={(e) => setDbTrustCert(e.target.checked)}
@@ -1389,10 +1614,10 @@ function ChatApp() {
                   {dbConfigMethod === 'fields' && dbConfigUrl && (
                     <div className="config-group" style={{ marginTop: '16px' }}>
                       <label>Auto-generated Connection URL</label>
-                      <div style={{ 
-                        position: 'relative', 
-                        background: 'var(--bg-secondary)', 
-                        borderRadius: '8px', 
+                      <div style={{
+                        position: 'relative',
+                        background: 'var(--bg-secondary)',
+                        borderRadius: '8px',
                         padding: '12px',
                         fontFamily: 'monospace',
                         fontSize: '0.85rem',
@@ -1448,7 +1673,7 @@ function ChatApp() {
                   <div className="modal-form-content">
                     <div className="config-group">
                       <label htmlFor="llmProvider-modal">LLM Provider</label>
-                      <select 
+                      <select
                         id="llmProvider-modal"
                         className="config-select"
                         value={llmProvider}
@@ -1462,7 +1687,7 @@ function ChatApp() {
 
                     <div className="config-group">
                       <label htmlFor="llmModel-modal">Model</label>
-                      <select 
+                      <select
                         id="llmModel-modal"
                         className="config-select"
                         value={isCustomModel ? 'custom' : llmModel}
@@ -1481,9 +1706,9 @@ function ChatApp() {
                         ))}
                         <option value="custom">Custom model...</option>
                       </select>
-                      
+
                       {isCustomModel && (
-                        <input 
+                        <input
                           type="text"
                           className="config-input"
                           placeholder="Enter custom model name"
@@ -1496,11 +1721,11 @@ function ChatApp() {
 
                     <div className="config-group">
                       <label htmlFor="llmTemp-modal">Temperature: {llmTemp.toFixed(1)}</label>
-                      <input 
-                        type="range" 
+                      <input
+                        type="range"
                         id="llmTemp-modal"
-                        min="0" 
-                        max="1" 
+                        min="0"
+                        max="1"
                         step="0.1"
                         value={llmTemp}
                         onChange={(e) => setLlmTemp(parseFloat(e.target.value))}
@@ -1515,10 +1740,10 @@ function ChatApp() {
                     {llmProvider === 'groq' && (
                       <div className="config-group">
                         <label htmlFor="groqKey-modal">Groq API Key</label>
-                        <input 
-                          type="password" 
+                        <input
+                          type="password"
                           id="groqKey-modal"
-                          className="config-input" 
+                          className="config-input"
                           placeholder="gsk_..."
                           value={groqKey}
                           onChange={(e) => setGroqKey(e.target.value)}
@@ -1530,10 +1755,10 @@ function ChatApp() {
                     {llmProvider === 'ollama_cloud' && (
                       <div className="config-group">
                         <label htmlFor="ollamaCloudKey-modal">Ollama Cloud API Key</label>
-                        <input 
-                          type="password" 
+                        <input
+                          type="password"
                           id="ollamaCloudKey-modal"
-                          className="config-input" 
+                          className="config-input"
                           placeholder="Enter your Ollama Cloud API key"
                           value={ollamaCloudKey}
                           onChange={(e) => setOllamaCloudKey(e.target.value)}
@@ -1544,10 +1769,10 @@ function ChatApp() {
                     {llmProvider === 'ollama' && (
                       <div className="config-group">
                         <label htmlFor="ollamaUrl-modal">Ollama Base URL</label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           id="ollamaUrl-modal"
-                          className="config-input" 
+                          className="config-input"
                           placeholder="http://localhost:11434"
                           value={ollamaUrl}
                           onChange={(e) => setOllamaUrl(e.target.value)}
