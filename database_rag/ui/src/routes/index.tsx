@@ -286,8 +286,8 @@ function UserMessageActions({ text, onEdit }: { text: string; onEdit: () => void
   }
   return (
     <div className="user-message-actions" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', marginLeft: '8px' }}>
-      <button 
-        onClick={handleCopy} 
+      <button
+        onClick={handleCopy}
         title={copied ? "Copied!" : "Copy Question"}
         type="button"
         style={{
@@ -303,8 +303,8 @@ function UserMessageActions({ text, onEdit }: { text: string; onEdit: () => void
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
-      <button 
-        onClick={onEdit} 
+      <button
+        onClick={onEdit}
         title="Edit Question"
         type="button"
         style={{
@@ -339,6 +339,8 @@ function ChatApp() {
   ])
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renamingTitle, setRenamingTitle] = useState('')
 
   // Database configurations
   const [dbConfigMethod, setDbConfigMethod] = useState<'url' | 'fields'>('url')
@@ -378,16 +380,45 @@ function ChatApp() {
   const [isSyncingFromFields, setIsSyncingFromFields] = useState(false)
 
   // Chat input
-  const [input, setInput] = useState('')
+  const [sessionInputs, setSessionInputs] = useState<Record<string, string>>({})
+  const activeInput = currentSessionId ? (sessionInputs[currentSessionId] || '') : ''
+  const setInputForCurrentSession = (val: string) => {
+    if (currentSessionId) {
+      setSessionInputs(prev => ({
+        ...prev,
+        [currentSessionId]: val
+      }))
+    }
+  }
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const prevSessionIdRef = useRef<string | null>(null)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
+    const container = messagesEndRef.current?.closest('.chat-messages-container')
+    if (container) {
+      if (behavior === 'auto') {
+        container.scrollTop = container.scrollHeight
+      } else {
+        messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+      }
+    } else {
+      messagesEndRef.current?.scrollIntoView({ block: 'end', behavior })
+    }
   }
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom('auto')
+  }, [messages, currentSessionId])
+
+  // Auto-resize input textarea based on user typing
+  useEffect(() => {
+    const textarea = chatInputRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+  }, [activeInput])
 
   // Load chat sessions from localStorage on mount
   useEffect(() => {
@@ -597,6 +628,20 @@ function ChatApp() {
       setCurrentSessionId(sessionId)
       setMessages(session.messages)
     }
+  }
+
+  const handleRenameSubmit = (sessionId: string) => {
+    if (!renamingTitle.trim()) return
+    setChatSessions(prev => {
+      const updated = prev.map(s => {
+        if (s.id === sessionId) {
+          return { ...s, title: renamingTitle.trim() }
+        }
+        return s
+      })
+      return updated
+    })
+    setRenamingSessionId(null)
   }
 
   const checkHealthAndLoadConfigs = async () => {
@@ -878,9 +923,9 @@ function ChatApp() {
   }
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return
-    const userQuery = input.trim()
-    setInput('')
+    if (!activeInput.trim() || loading) return
+    const userQuery = activeInput.trim()
+    setInputForCurrentSession('')
 
     // Append user message
     const updatedMessages = [...messages, { role: 'user', content: userQuery } as Message]
@@ -1004,10 +1049,37 @@ function ChatApp() {
                 className={`session-item ${currentSessionId === session.id ? 'active' : ''}`}
                 onClick={() => loadSession(session.id)}
               >
-                <div className="session-item-content">
+                <div className="session-item-content" style={{ flex: 1, minWidth: 0 }}>
                   <div className="session-item-title">
-                    <MessageSquare size={14} />
-                    <span>{session.title}</span>
+                    <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                    {renamingSessionId === session.id ? (
+                      <input
+                        className="rename-session-input"
+                        value={renamingTitle}
+                        onChange={(e) => setRenamingTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleRenameSubmit(session.id)
+                          } else if (e.key === 'Escape') {
+                            setRenamingSessionId(null)
+                          }
+                        }}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          background: 'var(--bg)',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          fontSize: '0.85rem',
+                          width: '100%',
+                          outline: 'none'
+                        }}
+                      />
+                    ) : (
+                      <span>{session.title}</span>
+                    )}
                   </div>
                   <div className="session-item-meta">
                     <span className="session-item-date">
@@ -1018,17 +1090,84 @@ function ChatApp() {
                     </span>
                   </div>
                 </div>
-                <button
-                  className="session-item-delete"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    deleteSession(session.id)
-                  }}
-                  type="button"
-                  title="Delete session"
-                >
-                  <Trash2 size={12} />
-                </button>
+
+                {renamingSessionId === session.id ? (
+                  <div className="session-item-actions" style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRenameSubmit(session.id)
+                      }}
+                      type="button"
+                      title="Save"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--accent)',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Check size={12} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setRenamingSessionId(null)
+                      }}
+                      type="button"
+                      title="Cancel"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="session-item-actions" style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                    <button
+                      className="session-item-edit"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setRenamingSessionId(session.id)
+                        setRenamingTitle(session.title)
+                      }}
+                      type="button"
+                      title="Rename session"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                    <button
+                      className="session-item-delete"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteSession(session.id)
+                      }}
+                      type="button"
+                      title="Delete session"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -1071,7 +1210,8 @@ function ChatApp() {
           </div>
         </header>
 
-        <div className="chat-messages">
+        <div className="chat-messages-container">
+          <div className="chat-messages">
           {messages.map((msg, idx) => (
             <div key={idx} className={`message-wrapper ${msg.role}`}>
               <div className="avatar">
@@ -1107,7 +1247,7 @@ function ChatApp() {
                       {msg.content && (
                         editingIndex === idx ? (
                           <div className="edit-message-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', minWidth: '300px' }}>
-                            <textarea 
+                            <textarea
                               className="edit-message-textarea"
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
@@ -1125,7 +1265,7 @@ function ChatApp() {
                               }}
                             />
                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                              <button 
+                              <button
                                 onClick={() => setEditingIndex(null)}
                                 type="button"
                                 style={{
@@ -1140,7 +1280,7 @@ function ChatApp() {
                               >
                                 Cancel
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleEditSubmit(idx, editValue)}
                                 type="button"
                                 style={{
@@ -1247,7 +1387,7 @@ function ChatApp() {
 
                     {msg.role === 'user' && !loading && editingIndex !== idx && (
                       <div className="user-message-actions-wrapper" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingRight: '8px' }}>
-                        <UserMessageActions 
+                        <UserMessageActions
                           text={msg.content || ''}
                           onEdit={() => {
                             setEditingIndex(idx)
@@ -1262,6 +1402,7 @@ function ChatApp() {
             </div>
           ))}
           <div ref={messagesEndRef} />
+          </div>
         </div>
 
         <div className="chat-input-container">
@@ -1273,10 +1414,11 @@ function ChatApp() {
           )}
           <div className={`chat-input-wrapper ${!dbConnected ? 'disabled' : ''}`}>
             <textarea
+              ref={chatInputRef}
               className="chat-input"
               placeholder={dbConnected ? "Ask a question about your database (e.g. 'show top 5 items')" : "Connect to a database first..."}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              value={activeInput}
+              onChange={(e) => setInputForCurrentSession(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={!dbConnected || loading}
               rows={1}
@@ -1284,7 +1426,7 @@ function ChatApp() {
             <button
               className="send-btn"
               onClick={handleSend}
-              disabled={!input.trim() || !dbConnected || loading}
+              disabled={!activeInput.trim() || !dbConnected || loading}
               type="button"
             >
               <Send size={18} />
