@@ -1,5 +1,5 @@
 (function () {
-      const DEFAULT_API = 'http://localhost:8888';
+      const DEFAULT_API = 'http://localhost:8000';
       let apiBase = localStorage.getItem('dbrag_api_base') || DEFAULT_API;
 
       const thread = document.getElementById('thread');
