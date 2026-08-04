@@ -39,6 +39,7 @@ class DynamicDatabaseTests(unittest.TestCase):
         prompt = SQL_GENERATION_PROMPT.format(
             dialect="postgresql",
             dialect_rules=dialect_rules("postgresql"),
+            history="",
             schema="TABLE: public.inventory(id integer)",
             question="List five rows",
         )

@@ -1961,3 +1961,75 @@ input:checked+.slider:before {
 .user-message-actions button:hover {
   color: var(--accent) !important;
 }
+
+/* Heartbeat animation for Stop/Interrupt button */
+@keyframes heartbeat {
+  0% {
+    transform: scale(1);
+  }
+  20% {
+    transform: scale(1.12);
+  }
+  40% {
+    transform: scale(1.02);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  80% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.send-btn.interrupt {
+  animation: heartbeat 1.2s infinite ease-in-out;
+}
+
+/* Show session item action buttons only on hover */
+.session-item .session-item-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.session-item:hover .session-item-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Context Menu Dropdown Options Styles */
+.chat-context-menu {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 4px;
+  color: #ececf1 !important;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-context-menu .menu-item:hover {
+  background-color: #2a2b32 !important;
+}
+
+.chat-context-menu .menu-item.danger {
+  color: #ef4444 !important;
+}
+
+.chat-context-menu .menu-item.danger:hover {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}

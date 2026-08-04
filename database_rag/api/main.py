@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import re
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -107,8 +108,15 @@ app.add_middleware(
 )
 
 
+class MessageItem(BaseModel):
+    role: str
+    content: Optional[str] = None
+    sql: Optional[str] = None
+
+
 class QueryRequest(BaseModel):
     question: str
+    history: Optional[list[MessageItem]] = []
 
 
 class QueryResponse(BaseModel):
@@ -116,6 +124,8 @@ class QueryResponse(BaseModel):
     sql: str
     results: list[dict]
     row_count: int
+    content: Optional[str] = None
+    suggestions: Optional[list[str]] = None
 
 
 class HealthResponse(BaseModel):
@@ -175,6 +185,18 @@ async def refresh_schema():
         )
 
 
+def get_tables_from_provider() -> list[str]:
+    if not db_provider:
+        return []
+    try:
+        schema_text = db_provider.get_schema()
+        # Find all TABLE: schema.table or VIEW: schema.table
+        tables = re.findall(r'(?:TABLE|VIEW):\s+([A-Za-z0-9_\.]+)', schema_text)
+        return tables
+    except Exception:
+        return []
+
+
 @app.post("/query", response_model=QueryResponse)
 async def execute_query(request: QueryRequest):
     if not text_to_sql:
@@ -184,15 +206,109 @@ async def execute_query(request: QueryRequest):
         )
 
     try:
-        sql, results = text_to_sql.execute_question_with_sql(request.question)
+        formatted_history = ""
+        if request.history:
+            for msg in request.history:
+                if msg.role == "user":
+                    formatted_history += f"User: {msg.content}\n"
+                elif msg.role == "bot" or msg.role == "assistant":
+                    if msg.sql:
+                        formatted_history += f"SQL: {msg.sql}\n"
+                    elif msg.content:
+                        formatted_history += f"Assistant: {msg.content}\n"
+
+        # DATA FLOW: Step 2 (Backend Routing & Request Mapping) -> Hops to execute_question_with_sql in llm/text_to_sql.py
+        # Passes formatted conversation history and current user question to the LLM processor.
+        sql, results, content = text_to_sql.execute_question_with_sql(
+            request.question, history=formatted_history
+        )
+        
+        suggestions = []
+        if content and "To avoid timing out" in content:
+            fallback_match = re.search(r'(?:FROM|JOIN)\s+([A-Za-z0-9_\."]+)', sql, re.IGNORECASE)
+            if fallback_match:
+                table_name = fallback_match.group(1)
+                suggestions.append(f"Fetch oldest records in {table_name} from year 2023")
+                suggestions.append(f"Fetch records from {table_name} created in year 2024")
+                suggestions.append(f"Fetch records from {table_name} from last month")
+            else:
+                suggestions.append("List all table names in my database")
+                
         return QueryResponse(
             question=request.question,
             sql=sql,
             results=results,
             row_count=len(results),
+            content=content,
+            suggestions=suggestions if suggestions else None
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # DATA FLOW: Step 8 (Recommendation Generation & Response Packaging)
+        # Triggered when query is out-of-domain. Introspects DB schema for table mentions to suggest limit/describe queries.
+        suggestions = []
+        tables = get_tables_from_provider()
+        
+        is_broad_query = any(phrase in request.question.lower() for phrase in ["total records", "how many records", "records in database", "total rows"])
+        
+        if is_broad_query:
+            content = "The database is extremely large. Please be more specific about which table or topic you are interested in."
+            if tables:
+                diverse_tables = []
+                n = len(tables)
+                if n <= 4:
+                    diverse_tables = tables
+                else:
+                    indices = [0, n // 3, (2 * n) // 3, n - 1]
+                    for idx in indices:
+                        t = tables[idx]
+                        if t not in diverse_tables:
+                            diverse_tables.append(t)
+                for i, t in enumerate(diverse_tables[:4]):
+                    if i % 3 == 0:
+                        suggestions.append(f"How many records are in the {t} table?")
+                    elif i % 3 == 1:
+                        suggestions.append(f"Fetch first 10 rows from table public.AppointmentFinancials {t}")
+                    else:
+                        suggestions.append(f"Describe columns and structure of table {t}")
+            else:
+                suggestions.append("List all table names in my database")
+        else:
+            content = "This information is not inside the database."
+            if "list all table" not in request.question.lower():
+                suggestions.append("List all table names in my database")
+            
+            if tables:
+                # Check if any table name is mentioned in the user's question
+                mentioned_table = None
+                for t in tables:
+                    short_name = t.split('.')[-1] if '.' in t else t
+                    # Match word bounds or simple substring to detect table name
+                    if short_name.lower() in request.question.lower():
+                        mentioned_table = t
+                        break
+
+                target_table = mentioned_table if mentioned_table else tables[0]
+                if not mentioned_table:
+                    for t in tables:
+                        if t.lower() not in request.question.lower():
+                            target_table = t
+                            break
+                
+                s1 = f"Fetch first 10 rows from table public.AppointmentFinancials {target_table}"
+                s2 = f"Describe columns and structure of table {target_table}"
+                if s1.lower() != request.question.lower():
+                    suggestions.append(s1)
+                if s2.lower() != request.question.lower():
+                    suggestions.append(s2)
+                    
+        return QueryResponse(
+            question=request.question,
+            sql="",
+            results=[],
+            row_count=0,
+            content=content,
+            suggestions=suggestions
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Query execution failed: {str(e)}")
 
@@ -398,6 +514,19 @@ async def update_database_config(config: DatabaseConfigRequest):
         "status": "ok",
         "message": "Database connected successfully. Configuration is session-only (dynamic mode).",
     }
+
+
+@app.post("/config/database/disconnect")
+async def disconnect_database():
+    global db_provider, text_to_sql
+    if db_provider:
+        try:
+            db_provider.disconnect()
+        except Exception:
+            pass
+    db_provider = None
+    text_to_sql = None
+    return {"status": "ok", "message": "Database disconnected successfully."}
 
 
 class LLMConfigRequest(BaseModel):
