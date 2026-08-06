@@ -217,8 +217,8 @@ async def execute_query(request: QueryRequest):
                     elif msg.content:
                         formatted_history += f"Assistant: {msg.content}\n"
 
-        # DATA FLOW: Step 2 (Backend Routing & Request Mapping) -> Hops to execute_question_with_sql in llm/text_to_sql.py
-        # Passes formatted conversation history and current user question to the LLM processor.
+        # DATA FLOW: Step 2 (Intent + Entity Extraction & Routing)
+        # Hops to execute_question_with_sql in llm/text_to_sql.py to process the question via the LLM.
         sql, results, content = text_to_sql.execute_question_with_sql(
             request.question, history=formatted_history
         )

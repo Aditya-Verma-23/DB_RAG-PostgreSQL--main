@@ -29,10 +29,10 @@ flowchart TD
 ### 1. User Question
 * **Input:** Natural language query typed by the user in the UI.
 * **Component:** [ui/src/routes/index.tsx](file:///c:/Users/sit327/Desktop/Shaligram/3/DB_RAG-PostgreSQL--main/database_rag/ui/src/routes/index.tsx)
-* **Function Handle:** `handleSend` (starts at Line 1202) and `handleEditSubmit` (starts at Line 612).
+* **Function Handle:** `handleSend` (starts at Line 1318) and `handleEditSubmit` (starts at Line 628).
 * **Code Block:**
   * Packages the user input text and session history.
-  * Dispatches an HTTP `POST` request to the backend `/query` endpoint (Line 1216 and Line 681).
+  * Dispatches an HTTP `POST` request to the backend `/query` endpoint (Line 1265 and Line 699).
 
 ---
 
@@ -50,17 +50,17 @@ flowchart TD
 ### 3. Schema Validator (Allowed Tables/Columns)
 * **Validator:** Database Inspector & Catalog Matching.
 * **Component:** [database/sqlalchemy_provider.py](file:///c:/Users/sit327/Desktop/Shaligram/3/DB_RAG-PostgreSQL--main/database_rag/database/sqlalchemy_provider.py)
-* **Function Handle:** `get_schema` (Line 83) & `_introspect_schema` (Line 92).
+* **Function Handle:** `get_schema` (Line 85) & `_introspect_schema` (Line 92).
 * **Code Block:**
   * Pulls metadata definitions (tables, constraints, views, columns) from the connection engine.
-  * Injects validated schema context into prompt instructions inside `llm/text_to_sql.py` (Line 214: `self.db_provider.get_schema()`), verifying that all referenced objects correspond to allowed tables/columns.
+  * Injects validated schema context into prompt instructions inside `llm/text_to_sql.py` (Line 234: `self.db_provider.get_schema()`), verifying that all referenced objects correspond to allowed tables/columns.
 
 ---
 
 ### 4. SQLCoder 15B (Final SQL Generation)
 * **Generator:** Text-to-SQL Translator.
 * **Component:** [llm/text_to_sql.py](file:///c:/Users/sit327/Desktop/Shaligram/3/DB_RAG-PostgreSQL--main/database_rag/llm/text_to_sql.py)
-* **Function Handle:** `generate_sql` (Line 212) and `_generate_sql` (Line 246).
+* **Function Handle:** `generate_sql` (Line 231) and `_generate_sql` (Line 287).
 * **Code Block:**
   * Builds the localized SQL generation prompt injecting system constraints and DB rules.
   * Invokes the LLM output chain `self._chain.ainvoke(...)` to produce the compiled, read-only SQL query block.

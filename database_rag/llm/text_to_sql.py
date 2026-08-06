@@ -230,7 +230,9 @@ class TextToSQL:
 
     def generate_sql(self, question: str, history: str = "") -> str:
         """Generate SQL from natural language question."""
-        # DATA FLOW: Step 3 (Prompt Ingestion) -> Calls db_provider.get_schema() in database/sqlalchemy_provider.py to fetch active DB schema structure.
+        # DATA FLOW: Step 4 (SQLCoder Final SQL Generation)
+        # Translates validated schema entities and user intent into syntax-accurate SQL.
+        # Calls db_provider.get_schema() (Step 3) to fetch the schema structure.
         return self._generate_sql(question, self.db_provider.get_schema(), history=history)
 
     def execute_question(self, question: str, history: str = "") -> list[dict]:

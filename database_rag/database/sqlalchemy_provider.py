@@ -63,8 +63,8 @@ class SQLAlchemyProvider(DatabaseProvider):
         return dialect_rules(self.dialect)
 
     def execute_query(self, query: str) -> list[dict]:
-        # DATA FLOW: Step 6 (Database SQL Query Execution)
-        # Connects to database server, executes raw SQL query via SQLAlchemy, and returns matching dataset.
+        # DATA FLOW: Step 5 (PostgreSQL Database Execution)
+        # Safely executes the compiled SQL query statement and returns matching dataset.
         if self._engine is None:
             raise RuntimeError("Database not connected. Call connect() first.")
         validate_query(query)
@@ -83,8 +83,8 @@ class SQLAlchemyProvider(DatabaseProvider):
             return False
 
     def get_schema(self) -> str:
-        # DATA FLOW: Step 4 (Schema Retrieval)
-        # Yields introspected and cached structural layout (tables/keys/views) to build context-aware prompts.
+        # DATA FLOW: Step 3 (Schema Validator)
+        # Cross-references extracted entities to verify requested tables and columns exist in the active schema.
         if self._schema_cache is None:
             self._schema_cache = self._introspect_schema()
         return self._schema_cache

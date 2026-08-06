@@ -1315,6 +1315,10 @@ function ChatApp() {
     }
   }
 
+  // DATA FLOW: Step 1 (User Question)
+  // Captures the natural language query typed by the user in the UI.
+  // Packages the input and delegates to sendQuery, which dispatches an HTTP POST request 
+  // to the backend /query endpoint with the session history.
   const handleSend = async () => {
     if (!activeInput.trim() || loading) return
     const userQuery = activeInput.trim()
