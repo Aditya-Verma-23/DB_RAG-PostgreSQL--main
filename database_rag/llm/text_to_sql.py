@@ -58,6 +58,14 @@ RULES:
    - all information
    - every field
    - complete record
+   - all records
+   - all rows
+   - fetch all
+   - show all
+   - get all
+   - entire table
+   - full table
+   - everything
    Otherwise, select only the required columns.
 
 10. When joining tables, use ONLY the FOREIGN KEY relationships explicitly defined in the schema. Never assume relationships based on similar column names.
@@ -117,7 +125,9 @@ RULES:
    - the question implies ordering (latest, newest, oldest, highest, lowest, top, bottom),
    - or ordering is required for LIMIT.
 
-29. Always add LIMIT 10 to SELECT queries by default to prevent length and performance issues, unless the user explicitly requested a different limit (e.g., top 5, limit 20, 50 rows) or explicitly requested 'all' records.
+29. Always add LIMIT 10 to SELECT queries by default to prevent length and performance issues, unless:
+   - the user explicitly requested a different limit (e.g., top 5, limit 20, 50 rows), OR
+   - the user's question contains the word 'all' (e.g., 'show all', 'get all', 'all records', 'all users', 'all data', 'all rows', 'fetch all', 'entire table', 'full table', 'everything', 'all data', 'every record', 'complete record') — in that case you MUST NOT add any LIMIT clause at all.
 
 30. Interpret common time expressions using PostgreSQL:
    today → CURRENT_DATE
@@ -149,6 +159,14 @@ RULES:
 
 39. If the user asks for all specifications, details, information, or the complete record, return every column from the relevant table.
 
+44. COLUMN COUNT vs ROW COUNT:
+   - "How many rows / records / entries" → COUNT(*) or COUNT(pk) FROM the target table.
+   - "How many columns / fields / attributes" → COUNT(*) FROM information_schema.columns WHERE table_name = '<table>' AND table_schema = '<schema>'.
+   If the user asks for a column count in the context of a previously queried table (from CONVERSATION HISTORY), you MUST filter information_schema.columns by that specific table name and schema.
+   NEVER count columns across all tables in the schema when the question is scoped to a specific table.
+   Example: if the previous query was on public."Users" and the user asks "how many columns does it have?", generate:
+     SELECT COUNT(*) AS column_count FROM information_schema.columns WHERE table_name = 'Users' AND table_schema = 'public'
+
 40. Return ONLY executable SQL.
    Do not include markdown.
    Do not include explanations.
@@ -170,11 +188,12 @@ RULES:
 
 42. METADATA & SYSTEM CATALOG QUERIES:
     If the user asks to list all tables, views, columns, or other database-wide metadata, you are allowed to query standard database system catalog tables/views (such as `information_schema.tables`, `information_schema.columns`, `pg_catalog.pg_tables`, or `sqlite_master` depending on the dialect).
+    For metadata queries (listing tables, views, columns, etc.) you MUST NOT add any LIMIT clause — return all results.
     Examples:
-    - PostgreSQL: `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'` (or other schemas present in the DATABASE SCHEMA).
-    - MySQL: `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()`.
-    - SQLite: `SELECT name FROM sqlite_master WHERE type = 'table'`.
-    - SQL Server: `SELECT table_name FROM information_schema.tables WHERE table_schema = 'dbo'`.
+    - PostgreSQL: `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name` (or other schemas present in the DATABASE SCHEMA).
+    - MySQL: `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name`.
+    - SQLite: `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`.
+    - SQL Server: `SELECT table_name FROM information_schema.tables WHERE table_schema = 'dbo' ORDER BY table_name`.
 
 43. CROSS-TABLE / LATEST ENTRY QUERIES (FAST SYSTEM CATALOG PROXY):
     If the user asks "in which table do we have the latest entry" or similar database-wide latest activity/entry questions:
@@ -231,7 +250,20 @@ class TextToSQL:
             # Translates prompt to SQL, then calls db_provider.execute_query(sql) to execute query on active SQL Database.
             raw_results = self.db_provider.execute_query(sql)
             
-            is_all_records = any(phrase in question.lower() for phrase in ["all records", "full records", "all data", "full data", "entire record", "complete record", "every record"])
+            is_all_records = (
+                bool(re.search(r'\ball\b', question.lower())) or  # standalone word 'all'
+                any(phrase in question.lower() for phrase in [
+                    # explicit all-records phrases
+                    "all records", "full records", "all data", "full data",
+                    "entire record", "complete record", "every record",
+                    "all rows", "fetch all", "show all", "get all",
+                    "entire table", "full table",
+                    # metadata / table-listing phrases
+                    "all table", "all tables", "list table", "list tables",
+                    "table names", "all views", "list views", "all columns",
+                    "list columns", "database tables", "tables in", "tables in my",
+                ])
+            )
             
             if is_all_records:
                 results = raw_results

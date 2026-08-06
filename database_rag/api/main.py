@@ -273,33 +273,69 @@ async def execute_query(request: QueryRequest):
             else:
                 suggestions.append("List all table names in my database")
         else:
-            content = "This information is not inside the database."
+            # Build a context-aware hint based on what the user asked
+            question_lower = request.question.lower()
+            if any(w in question_lower for w in ["who", "name", "person", "user", "customer", "patient", "employee", "doctor", "staff"]):
+                hint = "Try mentioning a specific table (e.g. 'Users', 'Patients') or a column like 'firstName' or 'email'."
+            elif any(w in question_lower for w in ["when", "date", "time", "month", "year", "recent", "latest", "last"]):
+                hint = "Try specifying a table and a date column, e.g. 'Show records from <table> created in 2024'."
+            elif any(w in question_lower for w in ["how many", "count", "total", "number of"]):
+                hint = "Specify which table to count, e.g. 'How many rows are in the <table> table?'"
+            elif any(w in question_lower for w in ["show", "list", "get", "fetch", "find", "give"]):
+                hint = "Be specific — mention the table name and the columns you need, e.g. 'Show firstName and email from <table>'."
+            else:
+                hint = "Try rephrasing with a table name or a specific field from your database schema."
+
+            content = (
+                f"I couldn't find a matching query for your question in the database schema. "
+                f"{hint} "
+                f"You can also ask 'List all table names in my database' to explore what's available."
+            )
             if "list all table" not in request.question.lower():
                 suggestions.append("List all table names in my database")
-            
+
             if tables:
-                # Check if any table name is mentioned in the user's question
+                # Find the most relevant table (mentioned in question, or fallback to first)
                 mentioned_table = None
                 for t in tables:
                     short_name = t.split('.')[-1] if '.' in t else t
-                    # Match word bounds or simple substring to detect table name
-                    if short_name.lower() in request.question.lower():
+                    if short_name.lower() in question_lower:
                         mentioned_table = t
                         break
-
                 target_table = mentioned_table if mentioned_table else tables[0]
-                if not mentioned_table:
-                    for t in tables:
-                        if t.lower() not in request.question.lower():
-                            target_table = t
-                            break
-                
-                s1 = f"Fetch first 10 rows from table public.AppointmentFinancials {target_table}"
-                s2 = f"Describe columns and structure of table {target_table}"
-                if s1.lower() != request.question.lower():
-                    suggestions.append(s1)
-                if s2.lower() != request.question.lower():
-                    suggestions.append(s2)
+                short = target_table.split('.')[-1] if '.' in target_table else target_table
+
+                # Generate runnable suggestions that match what the user was trying to do
+                if any(w in question_lower for w in ["how many", "count", "total", "number of"]):
+                    suggestions.append(f"How many records are in the {short} table?")
+                    suggestions.append(f"How many columns does the {short} table have?")
+                    suggestions.append(f"Fetch first 10 rows from {short}")
+
+                elif any(w in question_lower for w in ["when", "date", "time", "month", "year", "recent", "latest", "last"]):
+                    suggestions.append(f"Show the latest 10 records from {short}")
+                    suggestions.append(f"Fetch records from {short} created in 2024")
+                    suggestions.append(f"Show records from {short} from last 30 days")
+
+                elif any(w in question_lower for w in ["who", "name", "person", "user", "customer", "patient", "employee", "doctor", "staff"]):
+                    suggestions.append(f"Show all records from {short}")
+                    suggestions.append(f"Describe columns and structure of table {short}")
+                    suggestions.append(f"Fetch first 10 rows from {short}")
+
+                elif any(w in question_lower for w in ["describe", "structure", "column", "field", "schema", "what", "which"]):
+                    suggestions.append(f"Describe columns and structure of table {short}")
+                    suggestions.append(f"How many columns does the {short} table have?")
+                    suggestions.append(f"Fetch first 10 rows from {short}")
+
+                elif any(w in question_lower for w in ["show", "list", "get", "fetch", "find", "give", "all"]):
+                    suggestions.append(f"Fetch first 10 rows from {short}")
+                    suggestions.append(f"Show all records from {short}")
+                    suggestions.append(f"Describe columns and structure of table {short}")
+
+                else:
+                    suggestions.append(f"Fetch first 10 rows from {short}")
+                    suggestions.append(f"How many records are in the {short} table?")
+                    suggestions.append(f"Describe columns and structure of table {short}")
+
                     
         return QueryResponse(
             question=request.question,
@@ -591,6 +627,15 @@ async def update_llm_config(config: LLMConfigRequest):
             )
 
     return {"status": "ok", "message": "LLM settings updated successfully. Configuration is session-only (dynamic mode)."}
+
+
+@app.post("/config/llm/disconnect")
+async def disconnect_llm():
+    """Disconnect the LLM by resetting the TextToSQL instance."""
+    global text_to_sql
+    text_to_sql = None
+    return {"status": "ok", "message": "LLM disconnected successfully."}
+
 
 
 if __name__ == "__main__":
