@@ -1626,8 +1626,6 @@ input:checked+.slider:before {
 }
 
 .session-item.active {
-  border-color: var(--accent-dim);
-  background: rgba(125, 211, 192, 0.08);
 }
 
 .session-item-content {
@@ -1656,7 +1654,6 @@ input:checked+.slider:before {
 }
 
 .session-item.active .session-item-title svg {
-  color: var(--accent);
 }
 
 .session-item-meta {
