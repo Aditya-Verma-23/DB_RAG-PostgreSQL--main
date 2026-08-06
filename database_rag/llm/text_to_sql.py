@@ -11,6 +11,66 @@ from database.base import DatabaseProvider, strip_sql_fences
 from llm.factory import get_llm
 
 
+ROLE_ACCESS = {
+    "Admin": ["*"],
+    "User": ["Users", "Appointments"],
+    "Therapist": ["Users", "Appointments", "DoctorSchedules"]
+}
+
+def filter_schema_by_role(schema_text: str, role: str) -> str:
+    allowed_tables = ROLE_ACCESS.get(role, ["*"])
+    if "*" in allowed_tables:
+        return schema_text
+
+    allowed_lower = [t.lower() for t in allowed_tables]
+    lines = schema_text.split("\n")
+    filtered_lines = []
+    current_table_allowed = False
+    
+    for line in lines:
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+            
+        if line.startswith("TABLE:") or line.startswith("VIEW:"):
+            parts = line.split(":")
+            if len(parts) >= 2:
+                header = parts[1].split("(")[0].strip()
+                base_name = header.split(".")[-1].strip()
+                if base_name.lower() in allowed_lower or header.lower() in allowed_lower:
+                    current_table_allowed = True
+                    filtered_lines.append(line)
+                else:
+                    current_table_allowed = False
+            else:
+                current_table_allowed = False
+        elif line.startswith("  PRIMARY KEY:") or line.startswith("  FOREIGN KEY:"):
+            if current_table_allowed:
+                if line.startswith("  FOREIGN KEY:"):
+                    if "->" in line:
+                        target_part = line.split("->")[1].strip()
+                        target_table = target_part.split("(")[0].strip()
+                        target_base = target_table.split(".")[-1].strip()
+                        if target_base.lower() in allowed_lower or target_table.lower() in allowed_lower:
+                            filtered_lines.append(line)
+                    else:
+                        filtered_lines.append(line)
+                else:
+                    filtered_lines.append(line)
+                    
+    return "\n".join(filtered_lines)
+
+def get_all_tables_from_schema(schema_text: str) -> list[str]:
+    tables = []
+    for line in schema_text.split("\n"):
+        if line.startswith("TABLE:") or line.startswith("VIEW:"):
+            parts = line.split(":")
+            if len(parts) >= 2:
+                header = parts[1].split("(")[0].strip()
+                tables.append(header)
+    return tables
+
+
 # System prompt for SQL generation
 SQL_GENERATION_PROMPT = """You are an expert {dialect} query generator. Convert natural language questions into a valid read-only SQL query.
 
@@ -228,24 +288,67 @@ class TextToSQL:
         llm = get_llm(model=self.model)
         self._chain = prompt | llm | StrOutputParser()
 
-    def generate_sql(self, question: str, history: str = "") -> str:
+    def generate_sql(self, question: str, history: str = "", role: str = "Admin") -> str:
         """Generate SQL from natural language question."""
         # DATA FLOW: Step 4 (SQLCoder Final SQL Generation)
         # Translates validated schema entities and user intent into syntax-accurate SQL.
         # Calls db_provider.get_schema() (Step 3) to fetch the schema structure.
-        return self._generate_sql(question, self.db_provider.get_schema(), history=history)
+        raw_schema = self.db_provider.get_schema()
+        filtered_schema = filter_schema_by_role(raw_schema, role)
+        return self._generate_sql(question, filtered_schema, history=history)
 
-    def execute_question(self, question: str, history: str = "") -> list[dict]:
+    def execute_question(self, question: str, history: str = "", role: str = "Admin") -> list[dict]:
         """Generate SQL from question and execute it."""
-        _, results, _ = self.execute_question_with_sql(question, history=history)
+        _, results, _ = self.execute_question_with_sql(question, history=history, role=role)
         return results
 
-    def execute_question_with_sql(self, question: str, history: str = "") -> tuple[str, list[dict], Optional[str]]:
+    def execute_question_with_sql(self, question: str, history: str = "", role: str = "Admin") -> tuple[str, list[dict], Optional[str]]:
         """Generate and execute SQL, repairing one schema-related failure. Falls back to top 10 records if query fails/times out."""
-        sql = self.generate_sql(question, history=history)
+        sql = self.generate_sql(question, history=history, role=role)
 
         if sql.startswith("-- UNABLE TO ANSWER"):
             raise ValueError(f"Cannot answer: {question}")
+
+        # Double check: secure SQL execution verification
+        allowed_tables = ROLE_ACCESS.get(role, ["*"])
+        if not allowed_tables or ("*" not in allowed_tables):
+            # Clean comments from SQL
+            sql_clean = re.sub(r'--.*$', '', sql, flags=re.MULTILINE)
+            
+            # Find all CTE names in the query to avoid false positives
+            cte_pattern = r'\b(?:WITH|,)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(?:(?:\([^)]*\)\s+)?)AS\s*\('
+            ctes = re.findall(cte_pattern, sql_clean, re.IGNORECASE)
+            cte_lower = {c.lower() for c in ctes}
+            
+            # Match FROM/JOIN table_name
+            # This captures the table identifier after FROM/JOIN, ignoring optional schema prefix
+            pattern = r'\b(?:FROM|JOIN)\s+(?:(?:"?[a-zA-Z_][a-zA-Z0-9_]*"?\.)+)?("?[a-zA-Z_][a-zA-Z0-9_]*"?)\b'
+            matches = re.findall(pattern, sql_clean, re.IGNORECASE)
+            
+            allowed_lower = {t.lower() for t in allowed_tables}
+            disallowed_found = []
+            for match in matches:
+                table_name = match.replace('"', '').strip()
+                # Skip if it is a CTE name
+                if table_name.lower() in cte_lower:
+                    continue
+                if table_name.lower() not in allowed_lower:
+                    disallowed_found.append(table_name)
+                    
+            if disallowed_found:
+                # Intercept metadata queries (like table counts and lists) to mock the correct restricted response
+                is_metadata = any(
+                    "schema" in t.lower() or "catalog" in t.lower() or t.lower() in ["tables", "views", "columns", "pg_tables"]
+                    for t in disallowed_found
+                )
+                if is_metadata:
+                    if re.search(r'\bCOUNT\s*\(', sql, re.IGNORECASE):
+                        return sql, [{"count": len(allowed_tables)}], None
+                    else:
+                        return sql, [{"table_name": t} for t in allowed_tables], None
+                
+                # Otherwise, it's an unauthorized database table query. Raise a permission error!
+                raise PermissionError(f"Permission Error: Access denied. As a {role}, you only have access to: {', '.join(allowed_tables)}.")
 
         try:
             # DATA FLOW: Step 5 (Query Generation) & Step 6 (Database Execution)
@@ -280,6 +383,8 @@ class TextToSQL:
                 
             return clean_sql, results, None
         except Exception as first_error:
+            if isinstance(first_error, PermissionError):
+                raise first_error
             # DATA FLOW: Step 7 (Error Handling / Bypassed Fallback)
             # If the query execution fails or times out, do not show any database output (return empty results list)
             # and display the customized message suggesting timestamp/year/month granularity.

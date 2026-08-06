@@ -469,7 +469,7 @@ function ChatApp() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database, and I will generate SQL queries to fetch the answers.' }
+    { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database' }
   ])
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -606,7 +606,7 @@ function ChatApp() {
       title: 'New Chat',
       createdAt: Date.now(),
       messages: [
-        { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database, and I will generate SQL queries to fetch the answers.' }
+        { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database' }
       ]
     }
 
@@ -891,7 +891,7 @@ function ChatApp() {
             title: 'New Chat',
             createdAt: Date.now(),
             messages: [
-              { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database, and I will generate SQL queries to fetch the answers.' }
+              { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database' }
             ]
           }
           setCurrentSessionId(newSession.id)
@@ -1315,10 +1315,6 @@ function ChatApp() {
     }
   }
 
-  // DATA FLOW: Step 1 (User Question)
-  // Captures the natural language query typed by the user in the UI.
-  // Packages the input and delegates to sendQuery, which dispatches an HTTP POST request 
-  // to the backend /query endpoint with the session history.
   const handleSend = async () => {
     if (!activeInput.trim() || loading) return
     const userQuery = activeInput.trim()
