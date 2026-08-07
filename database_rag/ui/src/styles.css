@@ -1626,6 +1626,8 @@ input:checked+.slider:before {
 }
 
 .session-item.active {
+  border-color: var(--accent);
+  background: var(--panel);
 }
 
 .session-item-content {
