@@ -385,6 +385,10 @@ class TextToSQL:
         except Exception as first_error:
             if isinstance(first_error, PermissionError):
                 raise first_error
+            
+            err_str = str(first_error)
+            if "Illegal header value" in err_str or "Bearer" in err_str or "API key" in err_str or "API_KEY" in err_str:
+                raise RuntimeError("LLM API key is missing. Kindly insert your LLM API key in the settings panel.")
             # DATA FLOW: Step 7 (Error Handling / Bypassed Fallback)
             # If the query execution fails or times out, do not show any database output (return empty results list)
             # and display the customized message suggesting timestamp/year/month granularity.

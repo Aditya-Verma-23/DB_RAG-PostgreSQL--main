@@ -117,6 +117,7 @@ class MessageItem(BaseModel):
 class QueryRequest(BaseModel):
     question: str
     history: Optional[list[MessageItem]] = []
+    role: Optional[str] = "Admin"
 
 
 class QueryResponse(BaseModel):
@@ -220,7 +221,7 @@ async def execute_query(request: QueryRequest):
         # DATA FLOW: Step 2 (Backend Routing & Request Mapping) -> Hops to execute_question_with_sql in llm/text_to_sql.py
         # Passes formatted conversation history and current user question to the LLM processor.
         sql, results, content = text_to_sql.execute_question_with_sql(
-            request.question, history=formatted_history
+            request.question, history=formatted_history, role=request.role
         )
         return QueryResponse(
             question=request.question,

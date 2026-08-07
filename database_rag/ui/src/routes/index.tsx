@@ -87,6 +87,12 @@ interface ChatSession {
   isPinned?: boolean;
 }
 
+const roleAccess = {
+  Admin: ['*'],
+  User: ['Users', 'Appointments'],
+  Therapist: ['Users', 'Appointments', 'DoctorSchedules']
+};
+
 const parseSchema = (text: string): SchemaTable[] => {
   if (!text) return [];
   const tables: SchemaTable[] = [];
@@ -509,6 +515,7 @@ function ChatApp() {
   const [schemaError, setSchemaError] = useState('')
   const [schemaSearch, setSchemaSearch] = useState('')
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({})
+  const [userRole, setUserRole] = useState<'Admin' | 'User' | 'Therapist'>('Admin')
 
   // Track if user is editing URL or fields to prevent sync loops
   const [isSyncingFromUrl, setIsSyncingFromUrl] = useState(false)
@@ -705,7 +712,8 @@ function ChatApp() {
             role: m.role,
             content: m.content || null,
             sql: m.sql || null
-          }))
+          })),
+          role: userRole
         })
       })
 
@@ -1271,7 +1279,8 @@ function ChatApp() {
             role: m.role,
             content: m.content || null,
             sql: m.sql || null
-          }))
+          })),
+          role: userRole
         })
       })
 
@@ -1338,10 +1347,24 @@ function ChatApp() {
 
   // Parse schema blocks
   const schemaTables = parseSchema(schemaText)
-  const filteredTables = schemaTables.filter(t =>
-    t.name.toLowerCase().includes(schemaSearch.toLowerCase()) ||
-    t.columnsStr.toLowerCase().includes(schemaSearch.toLowerCase())
-  )
+  const filteredTables = schemaTables.filter(t => {
+    // Role-based Access check
+    const allowed = roleAccess[userRole];
+    if (!allowed.includes('*')) {
+      const baseName = (t.name.split('.').pop() || t.name).trim();
+      const isAllowed = allowed.some(allowedTab =>
+        baseName.toLowerCase() === allowedTab.toLowerCase() ||
+        t.name.toLowerCase().trim() === allowedTab.toLowerCase()
+      );
+      if (!isAllowed) return false;
+    }
+
+    // Search query check
+    return (
+      t.name.toLowerCase().includes(schemaSearch.toLowerCase()) ||
+      t.columnsStr.toLowerCase().includes(schemaSearch.toLowerCase())
+    );
+  })
 
   // Fullscreen loader if backend status is unknown
   if (backendConnected === null) {
@@ -1691,6 +1714,9 @@ function ChatApp() {
                   }}></span>
                 </span>
               </label>
+            </div>
+            <div className="status-badge connected" style={{ textTransform: 'uppercase', letterSpacing: '0.05em', height: '24px', display: 'flex', alignItems: 'center' }}>
+              Role: {userRole}
             </div>
             <button
               className="icon-btn"
@@ -2127,6 +2153,20 @@ function ChatApp() {
               {activeTab === 'schema' && (
                 <div className="modal-tab-panel">
                   <div className="schema-browser">
+                    <div className="role-selector-container" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>Access Role:</span>
+                      <select
+                        value={userRole}
+                        onChange={(e) => setUserRole(e.target.value as any)}
+                        className="config-select"
+                        style={{ flex: 1, padding: '7px 11px', height: '36px' }}
+                      >
+                        <option value="Admin">Admin</option>
+                        <option value="User">User</option>
+                        <option value="Therapist">Therapist</option>
+                      </select>
+                    </div>
+
                     <div className="search-box-container">
                       <Search size={16} className="search-icon" />
                       <input

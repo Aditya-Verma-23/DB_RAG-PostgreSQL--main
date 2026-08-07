@@ -25,9 +25,15 @@ def get_llm(
     if provider_name == "groq":
         from llm.groq_provider import GroqProvider
 
+        if not settings.groq_api_key or not settings.groq_api_key.strip():
+            raise RuntimeError("LLM API key is missing. Kindly insert your LLM API key in the settings panel.")
+
         return GroqProvider(model=model_name, temperature=temp).get_llm()
     elif provider_name == "ollama_cloud":
         from llm.ollama_cloud_provider import OllamaCloudProvider
+
+        if not settings.ollama_cloud_api_key or not settings.ollama_cloud_api_key.strip():
+            raise RuntimeError("LLM API key is missing. Kindly insert your LLM API key in the settings panel.")
 
         return OllamaCloudProvider(model=model_name, temperature=temp).get_llm()
     elif provider_name == "ollama":
