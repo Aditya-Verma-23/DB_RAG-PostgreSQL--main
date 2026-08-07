@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import random
 import re
 from typing import Optional
 
@@ -52,6 +53,14 @@ def update_env_file(key: str, value: str):
         f.writelines(new_lines)
 
 
+def _initialize_text_to_sql() -> None:
+    global text_to_sql
+    if not db_provider:
+        text_to_sql = None
+        return
+    text_to_sql = TextToSQL(db_provider)
+
+
 def configure_database(connection_url_or_obj: str | URL) -> dict:
     global db_provider, text_to_sql
 
@@ -78,7 +87,7 @@ def configure_database(connection_url_or_obj: str | URL) -> dict:
             pass
 
     db_provider = new_provider
-    text_to_sql = TextToSQL(db_provider)
+    text_to_sql = None
     return {"success": True}
 
 
@@ -198,13 +207,103 @@ def get_tables_from_provider() -> list[str]:
         return []
 
 
+def _is_greeting(question: str) -> bool:
+    normalized = question.strip().lower()
+    return bool(
+        re.match(r'^(hi|hello|hola|hey|hey there|hi there|good morning|good afternoon|good evening)([!.?]|\s.*)?$', normalized)
+    )
+
+
+def _is_closing(question: str) -> bool:
+    normalized = question.strip().lower()
+    return bool(
+        re.match(r'^(thanks?|thank you|thank you very much|gracias|muchas gracias|thx|ty|bye|goodbye)([!.?]|\s.*)?$', normalized)
+    )
+
+
+def _is_acknowledgement(question: str) -> bool:
+    normalized = question.strip().lower()
+    return bool(
+        re.match(r'^(this(\'s| is) good|that(\'s| is) good|this(\'s| is) great|that(\'s| is) great|looks good|sounds good|nice|great|awesome)([!.?]|\s.*)?$', normalized)
+    )
+
+
+def _simple_response(question: str, content: str) -> QueryResponse:
+    return QueryResponse(
+        question=question,
+        sql="",
+        results=[],
+        row_count=0,
+        content=content,
+    )
+
+
+def _random_choice(choices: list[str]) -> str:
+    return random.choice(choices)
+
+
+def _greeting_response(question: str) -> QueryResponse:
+    greetings = [
+        "Hi there! How can I help with your database today?",
+        "Hello! Ask me anything about your database.",
+        "Hola! I'm ready to help you explore your database.",
+        "Hey! What database question can I answer for you?",
+        "Hi! Need help querying your database?"
+    ]
+    return _simple_response(question, _random_choice(greetings))
+
+
+def _closing_response(question: str) -> QueryResponse:
+    closings = [
+        "You're welcome! If anything else comes up, just ask.",
+        "Happy to help! Let me know if you have more database questions.",
+        "Thanks! I'm here if you want to continue exploring your data.",
+        "Glad I could help. Ask me another database question anytime.",
+        "You're welcome! Come back anytime for more database help."
+    ]
+    return _simple_response(question, _random_choice(closings))
+
+
+def _acknowledgement_response(question: str) -> QueryResponse:
+    acknowledgements = [
+        "Great! Let me know if you'd like to do something else with the database.",
+        "Awesome! I'm ready for your next database question.",
+        "Glad to hear that! I can help with anything else you need.",
+        "Nice! If you'd like, I can run another query for you.",
+        "Perfect! Ask me another question whenever you're ready."
+    ]
+    return _simple_response(question, _random_choice(acknowledgements))
+
+
 @app.post("/query", response_model=QueryResponse)
 async def execute_query(request: QueryRequest):
-    if not text_to_sql:
+    if _is_greeting(request.question):
+        return _greeting_response(request.question)
+    if _is_closing(request.question):
+        return _closing_response(request.question)
+    if _is_acknowledgement(request.question):
+        return _acknowledgement_response(request.question)
+
+    if not _is_db_connected():
         raise HTTPException(
             status_code=503,
-            detail="Text-to-SQL not initialized. Please connect to a database first.",
+            detail="Database connection is not established. Please connect to a database first.",
         )
+
+    if not _is_llm_connected():
+        raise HTTPException(
+            status_code=503,
+            detail="LLM is not configured. Please configure LLM settings before sending queries.",
+        )
+
+    if not text_to_sql:
+        try:
+            _initialize_text_to_sql()
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM initialization failed: {str(e)}",
+            )
 
     try:
         formatted_history = ""
@@ -499,6 +598,26 @@ class LLMConfigRequest(BaseModel):
     ollama_base_url: Optional[str] = None
 
 
+def _is_db_connected() -> bool:
+    if not db_provider:
+        return False
+    try:
+        return db_provider.test_connection()
+    except Exception:
+        return False
+
+
+def _is_llm_connected() -> bool:
+    provider = settings.default_llm_provider
+    if provider == "groq":
+        return bool(settings.groq_api_key and settings.default_model)
+    if provider == "ollama_cloud":
+        return bool(settings.ollama_cloud_api_key and settings.default_model)
+    if provider == "ollama":
+        return bool(settings.ollama_base_url and settings.default_model)
+    return False
+
+
 @app.get("/config/llm")
 async def get_llm_config():
     return {
@@ -508,6 +627,7 @@ async def get_llm_config():
         "groq_api_key_configured": bool(settings.groq_api_key),
         "ollama_cloud_api_key_configured": bool(settings.ollama_cloud_api_key),
         "ollama_base_url": settings.ollama_base_url,
+        "llm_connected": _is_llm_connected(),
     }
 
 
@@ -541,10 +661,10 @@ async def update_llm_config(config: LLMConfigRequest):
     # Note: Configuration is NOT saved to .env - fully dynamic via UI
     # Configuration persists only for the current session
 
-    # Reinitialize TextToSQL chain with new LLM settings
+    # Reinitialize TextToSQL chain only if a database is already connected
     if db_provider:
         try:
-            text_to_sql = TextToSQL(db_provider)
+            _initialize_text_to_sql()
         except Exception as e:
             raise HTTPException(
                 status_code=400,

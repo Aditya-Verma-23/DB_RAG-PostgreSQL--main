@@ -465,6 +465,8 @@ input:checked+.slider:before {
   border: none;
   width: 36px;
   height: 36px;
+  min-width: 36px;
+  min-height: 36px;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -482,7 +484,7 @@ input:checked+.slider:before {
 }
 
 .send-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.75;
   cursor: not-allowed;
 }
 

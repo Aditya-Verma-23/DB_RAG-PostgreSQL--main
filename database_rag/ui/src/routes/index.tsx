@@ -463,6 +463,7 @@ function ChatApp() {
   const [activeTab, setActiveTab] = useState<'database' | 'llm' | 'schema'>('database')
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null) // null = loading
   const [dbConnected, setDbConnected] = useState<boolean>(false)
+  const [llmConnected, setLlmConnected] = useState<boolean>(false)
   const [loading, setLoading] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showSqlQuery, setShowSqlQuery] = useState<boolean>(() => localStorage.getItem('showSqlQuery') !== 'false')
@@ -477,6 +478,7 @@ function ChatApp() {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database' }
   ])
+  const [draftInput, setDraftInput] = useState('')
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
@@ -523,13 +525,15 @@ function ChatApp() {
 
   // Chat input
   const [sessionInputs, setSessionInputs] = useState<Record<string, string>>({})
-  const activeInput = currentSessionId ? (sessionInputs[currentSessionId] || '') : ''
+  const activeInput = currentSessionId ? (sessionInputs[currentSessionId] || '') : draftInput
   const setInputForCurrentSession = (val: string) => {
     if (currentSessionId) {
       setSessionInputs(prev => ({
         ...prev,
         [currentSessionId]: val
       }))
+    } else {
+      setDraftInput(val)
     }
   }
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -608,18 +612,14 @@ function ChatApp() {
   }, [currentSessionId])
 
   const createNewChat = () => {
-    const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      createdAt: Date.now(),
-      messages: [
-        { role: 'bot', content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database' }
-      ]
+    const welcomeMessage: Message = {
+      role: 'bot',
+      content: 'Hello! I am your Database RAG Assistant. Ask me questions about your database'
     }
 
-    setChatSessions(prev => [newSession, ...prev])
-    setCurrentSessionId(newSession.id)
-    setMessages(newSession.messages)
+    setCurrentSessionId(null)
+    setMessages([welcomeMessage])
+    setDraftInput('')
   }
 
   const togglePinSession = (sessionId: string, e: React.MouseEvent) => {
@@ -864,11 +864,12 @@ function ChatApp() {
     })
   }
 
-  const updateCurrentSession = (updatedMessages: Message[]) => {
-    if (!currentSessionId) return
+  const updateCurrentSession = (updatedMessages: Message[], sessionId?: string | null) => {
+    const targetSessionId = sessionId || currentSessionId
+    if (!targetSessionId) return
 
     setChatSessions(prev => prev.map(session => {
-      if (session.id === currentSessionId) {
+      if (session.id === targetSessionId) {
         // Generate title from first user message if still "New Chat"
         let title = session.title
         if (title === 'New Chat') {
@@ -917,6 +918,7 @@ function ChatApp() {
     if (session) {
       setCurrentSessionId(sessionId)
       setMessages(session.messages)
+      setDraftInput('')
     }
   }
 
@@ -970,6 +972,7 @@ function ChatApp() {
         setLlmProvider(provider)
         setLlmTemp(llmData.temperature ?? 0.3)
         setOllamaUrl(llmData.ollama_base_url || 'http://localhost:11434')
+        setLlmConnected(llmData.llm_connected ?? false)
 
         const modelName = llmData.model || ''
         const popularList = POPULAR_MODELS[provider as keyof typeof POPULAR_MODELS] || []
@@ -982,6 +985,8 @@ function ChatApp() {
           setCustomModel(modelName)
           setIsCustomModel(true)
         }
+      } else {
+        setLlmConnected(false)
       }
 
       if (healthData.database_connected) {
@@ -1248,23 +1253,41 @@ function ChatApp() {
       }
 
       setLlmStatusMsg({ type: 'success', text: data.message || 'LLM settings updated successfully' })
+      setLlmConnected(true)
     } catch (err: any) {
       setLlmStatusMsg({ type: 'error', text: err.message || 'Failed to configure LLM' })
+      setLlmConnected(false)
     } finally {
       setLoading(false)
     }
   }
 
   const sendQuery = async (userQuery: string, currentMsgs: Message[]) => {
+    const isDraftSession = !currentSessionId
     let updatedMessages = [...currentMsgs]
     if (updatedMessages.length === 0 || updatedMessages[updatedMessages.length - 1].content !== userQuery) {
       updatedMessages = [...updatedMessages, { role: 'user', content: userQuery } as Message]
     }
 
-    setMessages(updatedMessages)
+    const botLoadingMessage: Message = { role: 'bot', loading: true }
+    const sessionMessages = [...updatedMessages, botLoadingMessage]
 
-    // Add temporary loading bot message
-    setMessages(prev => [...prev, { role: 'bot', loading: true } as Message])
+    let targetSessionId = currentSessionId
+    if (isDraftSession) {
+      const newSessionId = Date.now().toString()
+      const newSession: ChatSession = {
+        id: newSessionId,
+        title: 'New Chat',
+        createdAt: Date.now(),
+        messages: sessionMessages
+      }
+      setChatSessions(prev => [newSession, ...prev])
+      setCurrentSessionId(newSessionId)
+      setDraftInput('')
+      targetSessionId = newSessionId
+    }
+
+    setMessages(sessionMessages)
     setLoading(true)
 
     try {
@@ -1302,7 +1325,7 @@ function ChatApp() {
           suggestions: data.suggestions
         }
         // Update session with new messages
-        updateCurrentSession(next)
+        updateCurrentSession(next, targetSessionId)
         return next
       })
     } catch (err: any) {
@@ -1316,7 +1339,7 @@ function ChatApp() {
           error: err.message || 'An error occurred during query execution.'
         }
         // Update session with error message
-        updateCurrentSession(next)
+        updateCurrentSession(next, targetSessionId)
         return next
       })
     } finally {
@@ -1718,6 +1741,14 @@ function ChatApp() {
             <div className="status-badge connected" style={{ textTransform: 'uppercase', letterSpacing: '0.05em', height: '24px', display: 'flex', alignItems: 'center' }}>
               Role: {userRole}
             </div>
+            <div className={`status-badge ${dbConnected ? 'connected' : 'disconnected'}`} style={{ textTransform: 'uppercase', letterSpacing: '0.05em', height: '24px', display: 'flex', alignItems: 'center' }}>
+              <Wifi size={14} />
+              DB {dbConnected ? 'Connected' : 'Disconnected'}
+            </div>
+            <div className={`status-badge ${llmConnected ? 'connected' : 'disconnected'}`} style={{ textTransform: 'uppercase', letterSpacing: '0.05em', height: '24px', display: 'flex', alignItems: 'center' }}>
+              <Cpu size={14} />
+              LLM {llmConnected ? 'Connected' : 'Disconnected'}
+            </div>
             <button
               className="icon-btn"
               title="Settings"
@@ -1749,6 +1780,8 @@ function ChatApp() {
               />
               <button
                 className="send-btn"
+                title="Send"
+                aria-label="Send"
                 onClick={handleSend}
                 disabled={!activeInput.trim() || !dbConnected || loading}
                 type="button"
@@ -2077,6 +2110,8 @@ function ChatApp() {
                 />
                 <button
                   className="send-btn"
+                  title="Send"
+                  aria-label="Send"
                   onClick={loading ? () => { } : handleSend}
                   disabled={!loading && (!activeInput.trim() || !dbConnected)}
                   type="button"
