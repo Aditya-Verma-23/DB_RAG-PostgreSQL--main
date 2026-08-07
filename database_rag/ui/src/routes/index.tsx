@@ -90,7 +90,8 @@ interface ChatSession {
 const roleAccess = {
   Admin: ['*'],
   User: ['Users', 'Appointments'],
-  Therapist: ['Users', 'Appointments', 'DoctorSchedules']
+  Therapist: ['Users', 'Appointments', 'DoctorSchedules'],
+  Doctor: ['Users', 'Appointments', 'DoctorSchedules']
 };
 
 const parseSchema = (text: string): SchemaTable[] => {
@@ -517,7 +518,7 @@ function ChatApp() {
   const [schemaError, setSchemaError] = useState('')
   const [schemaSearch, setSchemaSearch] = useState('')
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({})
-  const [userRole, setUserRole] = useState<'Admin' | 'User' | 'Therapist'>('Admin')
+  const [userRole, setUserRole] = useState<'Admin' | 'User' | 'Therapist' | 'Doctor'>('Admin')
 
   // Track if user is editing URL or fields to prevent sync loops
   const [isSyncingFromUrl, setIsSyncingFromUrl] = useState(false)
@@ -1372,7 +1373,8 @@ function ChatApp() {
   const schemaTables = parseSchema(schemaText)
   const filteredTables = schemaTables.filter(t => {
     // Role-based Access check
-    const allowed = roleAccess[userRole];
+    const effectiveRole = userRole === 'Doctor' ? 'Therapist' : userRole
+    const allowed = roleAccess[effectiveRole]
     if (!allowed.includes('*')) {
       const baseName = (t.name.split('.').pop() || t.name).trim();
       const isAllowed = allowed.some(allowedTab =>
@@ -2199,6 +2201,7 @@ function ChatApp() {
                         <option value="Admin">Admin</option>
                         <option value="User">User</option>
                         <option value="Therapist">Therapist</option>
+                        <option value="Doctor">Doctor</option>
                       </select>
                     </div>
 
